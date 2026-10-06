@@ -358,10 +358,10 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [x] Flutter project with dependencies and `flutterfire configure`
 
 ### Step 1: Auth and roles
-- [ ] Auth middleware (verify token with revocation check) and role middleware
-- [ ] Standard error shape and error middleware
-- [ ] `seed-admin` script that creates the first admin, sets the claim, and writes the admin doc
-- [ ] `GET /me`
+- [x] Auth middleware (verify token with revocation check) and role middleware
+- [x] Standard error shape and error middleware
+- [x] `seed-admin` script that creates the first admin, sets the claim, and writes the admin doc
+- [x] `GET /me`
 - [ ] Flutter login, API client that attaches the token, routing to the admin or employee home
 - [ ] **Done when:** two test users log in and see different screens, and a request without a token gets 401
 
