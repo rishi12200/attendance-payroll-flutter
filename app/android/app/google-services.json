@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "108287081654",
+    "project_id": "attendance-and-payroll-poc",
+    "storage_bucket": "attendance-and-payroll-poc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:108287081654:android:3e169439c2fa40b94cfa17",
+        "android_client_info": {
+          "package_name": "com.attendancepoc.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAssFHJ9fnlvoE5-lcsWQoRz5XJe1DQnuk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -355,7 +355,7 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [x] `firebase.json`, deny-all rules, `.gitignore`
 - [ ] Verified against the real Firebase project (`npm run check:firebase` passes)
 - [ ] Deploy deny-all rules (`firebase deploy --only firestore:rules`)
-- [ ] Flutter project with dependencies and `flutterfire configure`
+- [x] Flutter project with dependencies and `flutterfire configure`
 
 ### Step 1: Auth and roles
 - [ ] Auth middleware (verify token with revocation check) and role middleware
