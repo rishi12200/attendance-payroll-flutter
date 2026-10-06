@@ -1,25 +1,23 @@
 import express from 'express';
 import cors from 'cors';
 import { healthRouter } from './routes/health';
+import { createMeRouter, type MeRouteDependencies } from './routes/me';
+import { AppError } from './errors/app-error';
+import { errorHandler } from './middleware/error-handler';
 
-export function createApp() {
+export function createApp(dependencies: MeRouteDependencies) {
   const app = express();
 
   app.use(cors());
   app.use(express.json());
 
   app.use('/health', healthRouter);
+  app.use('/me', createMeRouter(dependencies));
 
-  app.use((_req, res) => {
-    res.status(404).json({ error: 'Not found' });
+  app.use((_req, _res, next) => {
+    next(new AppError(404, 'NOT_FOUND', 'Not found.'));
   });
-
-  app.use(
-    (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-      console.error(err);
-      res.status(500).json({ error: 'Internal server error' });
-    },
-  );
+  app.use(errorHandler);
 
   return app;
 }

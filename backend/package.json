@@ -7,6 +7,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/middleware/auth.test.ts",
+    "seed:admin": "tsx src/scripts/seed-admin.ts",
     "check:firebase": "tsx src/scripts/check-firebase.ts"
   },
   "dependencies": {
