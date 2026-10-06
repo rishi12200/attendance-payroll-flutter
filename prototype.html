@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Attendance & Payroll Register</title>
+<style>
+  :root{
+    --paper:#F7F3E9;
+    --paper-deep:#EFE8D7;
+    --ink:#20242C;
+    --muted:#726A5C;
+    --line:#D8CFB8;
+    --navy:#1C2B45;
+    --navy-light:#2C4066;
+    --gold:#B8862F;
+    --gold-soft:#EADFC2;
+    --rust:#A23F2E;
+    --rust-soft:#F1DCD6;
+    --leaf:#3E6B4C;
+    --leaf-soft:#DCE9DE;
+    --amber:#B98A1E;
+    --amber-soft:#F3E5C4;
+    --slate:#5A6B82;
+    --slate-soft:#DCE3EC;
+    font-family: ui-sans-serif, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);}
+  body{min-height:100vh;}
+  h1,h2,h3{font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; font-weight:600; margin:0;}
+  .mono{font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;}
+  #app{display:flex; min-height:100vh;}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width:216px; flex-shrink:0; background:var(--navy); color:#EDE7D6;
+    display:flex; flex-direction:column; padding:22px 0;
+  }
+  .brand{padding:0 20px 18px 20px; border-bottom:1px solid rgba(237,231,214,0.14); margin-bottom:10px;}
+  .brand .mark{font-family:Georgia, serif; font-size:20px; letter-spacing:0.3px; color:#F4EFE0;}
+  .brand .sub{font-size:11px; color:#9AA6BC; margin-top:3px;}
+  .nav-item{
+    padding:11px 20px; font-size:14px; cursor:pointer; color:#C6CEDC;
+    border-left:3px solid transparent; display:flex; align-items:center; gap:10px;
+  }
+  .nav-item:hover{background:rgba(255,255,255,0.04); color:#EDE7D6;}
+  .nav-item.active{background:rgba(184,134,47,0.15); border-left-color:var(--gold); color:#F4EFE0; font-weight:600;}
+  .nav-glyph{width:16px; display:inline-block; text-align:center; font-size:13px; opacity:0.85;}
+  .sidebar-foot{margin-top:auto; padding:14px 20px 0 20px; font-size:11px; color:#7C879C; border-top:1px solid rgba(237,231,214,0.1);}
+
+  /* ---------- Main ---------- */
+  .main{flex:1; min-width:0; display:flex; flex-direction:column;}
+  .topbar{
+    background:var(--paper); border-bottom:1px solid var(--line); padding:16px 28px;
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  .topbar h1{font-size:21px; color:var(--navy);}
+  .topbar .tag{font-size:12px; color:var(--muted); margin-top:2px;}
+  .controls{display:flex; align-items:center; gap:10px;}
+  .month-input, .co-input{
+    font-family: ui-monospace, monospace; font-size:13px; border:1px solid var(--line); background:#fff;
+    padding:7px 10px; border-radius:3px; color:var(--ink);
+  }
+  .content{padding:26px 28px 60px 28px; flex:1;}
+
+  /* ---------- Cards / dashboard ---------- */
+  .grid-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:26px;}
+  .card{
+    background:#fff; border:1px solid var(--line); border-radius:4px; padding:16px 18px;
+    border-top:3px solid var(--gold);
+  }
+  .card .num{font-family:Georgia, serif; font-size:28px; color:var(--navy); line-height:1.1;}
+  .card .label{font-size:12px; color:var(--muted); margin-top:6px;}
+  .card.rust{border-top-color:var(--rust);}
+  .card.leaf{border-top-color:var(--leaf);}
+  .card.slate{border-top-color:var(--slate);}
+
+  .section-title{font-size:15px; color:var(--navy); margin:26px 0 10px 0; padding-bottom:6px; border-bottom:1px solid var(--line);}
+
+  /* ---------- Tables (ledger feel) ---------- */
+  table{width:100%; border-collapse:collapse; background:#fff;}
+  .ledger{border:1px solid var(--line);}
+  .ledger th{
+    background:var(--navy); color:#EDE7D6; font-size:11.5px; text-align:left; padding:9px 10px;
+    font-weight:600; letter-spacing:0.2px; white-space:nowrap;
+  }
+  .ledger td{padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:middle;}
+  .ledger tbody tr:hover{background:var(--paper-deep);}
+  .ledger tbody tr:last-child td{border-bottom:none;}
+  .status-pill{
+    display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600;
+  }
+  .pill-active{background:var(--leaf-soft); color:var(--leaf);}
+  .pill-resigned{background:var(--rust-soft); color:var(--rust);}
+
+  /* ---------- Attendance register grid ---------- */
+  .att-wrap{overflow-x:auto; border:1px solid var(--line); background:#fff;}
+  .att-table{border-collapse:collapse; font-size:12px;}
+  .att-table th, .att-table td{border:1px solid var(--line); text-align:center; padding:0;}
+  .att-table th{background:var(--navy); color:#EDE7D6; font-weight:600; padding:6px 4px; font-size:10.5px;}
+  .att-table .emp-col{position:sticky; left:0; background:#fff; z-index:2; text-align:left; padding:7px 10px; font-size:12.5px; min-width:170px; border-right:2px solid var(--line);}
+  .att-table th.emp-col{background:var(--navy); z-index:3;}
+  .day-cell{width:26px; height:30px; cursor:pointer; font-weight:700; font-size:11px; user-select:none;}
+  .day-cell.sun{background:var(--paper-deep); color:var(--muted); cursor:default;}
+  .day-cell.present{color:var(--leaf);}
+  .day-cell.A{background:var(--rust-soft); color:var(--rust);}
+  .day-cell.H{background:var(--amber-soft); color:var(--amber);}
+  .day-cell.L{background:var(--slate-soft); color:var(--slate);}
+  .sum-col{min-width:46px; font-size:11.5px; background:var(--paper-deep); font-weight:600;}
+  .legend{display:flex; gap:16px; margin-top:10px; font-size:12px; color:var(--muted); flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:5px;}
+  .swatch{width:12px; height:12px; border-radius:2px; display:inline-block;}
+
+  /* ---------- Payroll table ---------- */
+  .num-cell{text-align:right; font-family:ui-monospace,monospace; font-size:12.5px;}
+  .adj-input{width:78px; text-align:right; font-family:ui-monospace,monospace; font-size:12px; border:1px solid var(--line); border-radius:3px; padding:4px 6px;}
+  .link-btn{background:none; border:none; color:var(--navy); text-decoration:underline; cursor:pointer; font-size:12.5px; padding:0; font-family:inherit;}
+  .net-pos{color:var(--leaf); font-weight:700;}
+
+  /* ---------- Payslip ---------- */
+  .payslip-overlay{
+    position:fixed; inset:0; background:rgba(28,32,40,0.55); display:flex; align-items:flex-start;
+    justify-content:center; padding:36px 16px; overflow-y:auto; z-index:50;
+  }
+  .payslip{
+    background:#fff; width:720px; max-width:100%; border:1px solid var(--line); padding:34px 38px;
+  }
+  .payslip-head{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--navy); padding-bottom:14px; margin-bottom:18px;}
+  .payslip-head h2{color:var(--navy); font-size:20px;}
+  .payslip-head .period{font-size:13px; color:var(--muted); margin-top:4px;}
+  .payslip-grid{display:grid; grid-template-columns:1fr 1fr; gap:4px 24px; font-size:13px; margin-bottom:18px;}
+  .payslip-grid div span.k{color:var(--muted);}
+  .pay-cols{display:grid; grid-template-columns:1fr 1fr; gap:24px;}
+  .pay-cols h3{font-size:12.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--navy); border-bottom:1px solid var(--line); padding-bottom:6px; margin-bottom:8px;}
+  .pay-row{display:flex; justify-content:space-between; font-size:13px; padding:3px 0;}
+  .pay-row.total{border-top:1px solid var(--line); margin-top:6px; padding-top:7px; font-weight:700;}
+  .net-box{margin-top:20px; background:var(--gold-soft); border:1px solid var(--gold); padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-radius:3px;}
+  .net-box .big{font-family:Georgia,serif; font-size:22px; color:var(--navy);}
+  .close-row{display:flex; justify-content:flex-end; gap:10px; margin-bottom:14px;}
+  .btn{
+    font-size:12.5px; padding:7px 14px; border-radius:3px; border:1px solid var(--navy); background:var(--navy);
+    color:#EDE7D6; cursor:pointer; font-family:inherit;
+  }
+  .btn.ghost{background:#fff; color:var(--navy);}
+  .note{font-size:11px; color:var(--muted); margin-top:16px; line-height:1.5; border-top:1px dashed var(--line); padding-top:10px;}
+
+  /* ---------- Add employee form ---------- */
+  .add-emp-form{background:#fff; border:1px solid var(--line); border-top:3px solid var(--gold); padding:16px 18px 4px 18px; margin-bottom:18px;}
+  .form-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:10px 16px;}
+  .form-grid label{display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--muted);}
+  .form-grid input, .form-grid select{
+    font-family:inherit; font-size:13px; padding:7px 9px; border:1px solid var(--line); border-radius:3px; color:var(--ink); background:var(--paper);
+  }
+  .form-grid input:focus, .form-grid select:focus{outline:2px solid var(--gold); outline-offset:1px;}
+
+  /* ---------- Role switcher ---------- */
+  .role-switch{display:flex; align-items:center; gap:8px;}
+  .role-switch select{
+    font-size:12.5px; padding:7px 10px; border-radius:3px; border:1px solid var(--line);
+    background:#fff; color:var(--ink); font-family:inherit;
+  }
+  .role-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap;}
+
+  @media print{
+    .sidebar, .topbar, .close-row, .no-print{display:none !important;}
+    .payslip-overlay{position:static; background:none; padding:0;}
+    .payslip{border:none; width:auto;}
+    body{background:#fff;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+
+  /* ============ DATA ============ */
+  const SEED_EMPLOYEES = [
+    {id:'EMP-001', name:'Pitchandi Karthikeyan', gender:'M', dob:'1992-08-14', doj:'2021-04-01', designation:'MD', department:'Management', manager:'Pitchandi Karthikeyan', email:'VR@prismbeamz.in', mobile:'9884413404', pan:'ABCDE1234F', uan:'100123456789', bank:'1234567890', ifsc:'HDFC0001234', ctc:2500000, status:'Active'},
+    {id:'EMP-002', name:'Sasi Priya', gender:'F', dob:'1983-03-02', doj:'2025-06-10', designation:'Team Lead', department:'Management', manager:'Pitchandi Karthikeyan', email:'VR@prismbeamz.in', mobile:'9884413404', pan:'FGHIJ5678K', uan:'100987654321', bank:'9876543210', ifsc:'ICIC0005678', ctc:1000000, status:'Active'},
+    {id:'EMP-003', name:'Gomathi', gender:'F', dob:'1990-11-21', doj:'2024-01-15', designation:'Medical Coding Head', department:'Management', manager:'Pitchandi Karthikeyan', email:'VR@prismbeamz.in', mobile:'9884413404', pan:'LMNOP3456Q', uan:'100112233445', bank:'5566778899', ifsc:'SBIN0012345', ctc:500000, status:'Active'},
+    {id:'EMP-004', name:'Vijayaragavan AJ', gender:'M', dob:'1993-07-07', doj:'2024-03-05', designation:'IT', department:'Management', manager:'Pitchandi Karthikeyan', email:'VR@prismbeamz.in', mobile:'9884413404', pan:'QRSTU6789V', uan:'100223344556', bank:'4455667788', ifsc:'UTIB0006789', ctc:500000, status:'Active'},
+    {id:'EMP-005', name:'Gopal', gender:'M', dob:'1995-01-30', doj:'2024-02-20', designation:'Field Officer', department:'Support', manager:'Pitchandi Karthikeyan', email:'VR@prismbeamz.in', mobile:'9884413404', pan:'VWXYZ1122A', uan:'100334455667', bank:'3344556677', ifsc:'PUNB0023456', ctc:400000, status:'Active'},
+    {id:'EMP-006', name:'Kamala Kannan', gender:'M', dob:'1991-09-11', doj:'2024-07-12', designation:'HR Executive', department:'Human Resources', manager:'Pitchandi Karthikeyan', email:'VR@prismbeamz.in', mobile:'9884413404', pan:'BCDEF2233G', uan:'100445566778', bank:'2233445566', ifsc:'KKBK0034567', ctc:400000, status:'Active'},
+    {id:'EMP-007', name:'Jeyavel', gender:'M', dob:'1986-04-19', doj:'2023-09-01', designation:'Operations Manager', department:'Operations', manager:'Pitchandi Karthikeyan', email:'VR@prismbeamz.in', mobile:'9884413404', pan:'CDEFG3344H', uan:'100556677889', bank:'1122334455', ifsc:'UTIB0045678', ctc:400000, status:'Active'},
+  ];
+
+  const LOGO_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJwAAACcCAYAAACKuMJNAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAFxEAABcRAcom8z8AAGCmSURBVHhe7X0HdFRnkrV2DYONAx7GCZS7WzmSgzIKKEuARMbYYJNzzkICIZEzJgrFbnXufjl1TsqInIwxBgMi28Zk9P3nE4gRIM3u/ruD8UzfczhzZs70o3nvdtVXVffWc3Cwww477LDDDjvssMMOO+ywww477LDDDjvssMMOO+ywww477LDDDjvssMMOO+ywww477LDDDjvs+JdAY21tV+n4sZEbIkJHbE+IGymdMSO6ViZzlQDwzqv/Xzvs+F/hnsHgfDJ31URpWrJ6S3DQ2W29ep4RZ2agxuVLZuAb1ngCAP7j1c/YYcf/FwC45XJ05YrJRHK8Udarx11JgB8QBwQCab+Qu2j6IAMxa9Zs1f5dXg4ODv/56mftsOO/DQBAu0Y1JfhxxcrputRUozLA5xEtcAc6AR/oeB5Aw/cBmH/3u2hMvFk++suFBbNnB+wBNe1fvY4ddvy30MgZfRuWrF5oi02tJH0CHnB8N2BydwTVLs6g3skVHPrCHZi68AHi7PUQ6RdVrZ86fakyJyfAITPTfqaz478PeB5rPHnY6/ySnMXVcYMPGXx6P9I78YDRxQlUuDuCQ06O4MinX4CjnR1B3SduwPqFB+B8ej6kY5NqsQmTlqFbdvk7ODi0e/W6dtjxGgAA7zwwEr6nV65YXJEypIbz6dlocfYG+q5uQOPsDIy+Xo01QUGPa7x8Hle68EGVEw9Uu3iBCr4/oPx7PMbikmoV475ZtmXy5MA9Nfb0asd/gUYj63k6e/kSKjGhjggIfmgU+AKLqwfgnN2AmufxlAkJaagcMuRE5aDUE1zfPjcoDwEwuriDKndPYPHwA4h3wENJWFQ1NnHyUmVeXoC9kLCjTYAr593qli2ciycl1imDgp4wfA+g53sAnas7wL18gLJ/6OXChGRsy6Ah63ZkDllTlBSHSfv3vEl5egCbGw9U8DwA6+QGlN4BD/GktCp8yowl4ryNAQ4REfb0asffAdPoHZblnclfPYtKT7eV+wU8xQRegBF4AkrgAVBv76eSvv2uFqSkqSfFxM116PhRnMMHfw1ZmJ40riwtQYL07X2Z8/EBence0Di5AdpNAFSB3e6rU1KrkOnTl+6bNy+wBgB7erXjGRqrqrzOrsxZTCYnV6u79bxPevkBmucFUJ4nEHv7NorDw698l5SMjuzbd7aLi0uMg4MDTJXOISEhLnmDk1PUQzOKkbCwqyq+B9C4CYDOjQdQVzcgDQy4r0hJqNDOmbWE27Il0MHBwV69/ruj8fhx16MLl83nktKPKP27PSV53kDr6Q8YD1+gDAgGZWFhV7YkJiHjoqPnOHToEO3g4ODn4ODg6uDg0Al+vnPv3h+JZs5MEA0eUiTtF3KF8g8AGjc3QDp1BWp3JyDr7ndfmRBdq/527HJhbm6gw5499kj37wiYRu/TBvfzOXmztYmDKuVeQY24ixcgXT0B6ekHkMBujeURkdd2p6dhI0P6ze3wjGwwSjk7ODh85ODg8II4gYGB7++bMCFeOXJkkTKk/2XMxxMwAjdA8boCNf8LIPJxeyKLi6wlpk9dum/x4kAdAPYz3b8bQM0p7x/n5yzUx6TXaAP63TfwAoHGyRMgznxQ7uvfKB4w4NrO1FRyWL9+8z777LPY52nU6TnZXiNM1tatH+0cNy5OOnTIQSQ64jIa6AVoQRfA8D8FtJcjUAR5P5DERFYRkycvtRYUwGu9dg07/kUBDh1y+2FB1oLK+CH1lKA7sDj5gyr3IGBw8wUq30BQHBp6eUtKEvb1gMgFDu+8A89ssJEL0ygkW9ttji5dOpbMmx4nGTm0UB7V7woRLABaj8+ATvAFoAROQB7k90AVH1+j/nby4n3Lcnwc7CqTf23ACcL9KhPvh9ycmfr45ErKI+CJztETGLt6AYOrP6C9uwFF+ICGvUMGISNC+8/p1KkTJFvQ8zT64T8k23NMmDCh4/avxgyUDR9cikT0biB9XQDr/hnQCJwA4+MBxD7ejyQDYizk9HlzSrJyfbOysuyR7l8VjXWcb33WwkVU6sAqIijgvsaNBwzOfMA5ewDEO7hRFRF7dXdyGjYmNHRO588+g2SDBULzma0J8OwHAOgEAHj35av/HaNGTf9ox+jh8bK0ZBEZ0fcWG+AJNHwnwPGcAMl3A8qAwN/VsUkWdsrsZdbdBd0devSwFxL/SgAA/Od9s4Z/PHvhEjYz6bCkmxfABE6A47sAnYcHIAKDQXloxOWdyWnoN9GxcxwcHGCBANOoy/PI1oRjkoNfaHMXRytmfDtW+OWoEdJJk8KY7du7OrSuhetY9tVXKdjgwRIyMvwGG+gLWHdHoOE5A8rdDSh9Ax5wKen1+llz1pRnZ/eaThAdXr2AHX9SNOr1HmdzVs5l0hJqlT18HqM+LgDlfQEIgRMgAn2AKjrq+p7UdHxYn/5zPvvb35qrUVggvCDb7yph14pViyeKh6dJtvYJrt0WHFAnTkqSmOfPn6RYupT/8t/4DMVz576/d8iwZHRIpoyICrtN+XsCmucEKKcugHZzB3Rgt0dscuoJzezZa4uysnraC4l/AQBLjfe5BcsW6xOSa4hugY8ob1dAeDgCRNAVKIM8gDI6/NretBRibETE/Pc7fwSr0dfSaKOBcq5fPncSlZmmF/budnu/uwsQ8ngA6dHzFzY52aCbPHkes3mzz8t/8zPEx4/6aE/GqFTFkMEiJDr8GuLnASjnLsDo7ARMbjzABHVvJOOTTjCTpqzRbdre02HCBHt6/TOiSWKkNrhfWJi1pHLg4MOkVyDQ8WHV6AZID2egCPIAZZF9ru0ZlIJPiI6a7/DOO5BssEB4KY3+WLK7i23BlMn04ESjsnvQPYznDhgnF2BycgMGVx4g/P3vUymJVejkbxevn/i174TWG7sd940fnygeNqRUHNb3CuHnAUyuTsDctSvQu7gB3C/oqS550HHDtFn5hbMX9N5qT69/PsBB/Pms/Dm66JRazqPbY5OrDzC5eQCO5w6U3jwgiex3/btBScTIkJB5XT79NK5FNQonCE1nskuiAmfL/MkzVcnRRpG/9z3M3R3YeJ7gqMAXHHHmg4rPHQHt6Ajk/l73lInRldjU8SsK582A6fi1ajYrK+uDTaOGxclGDi1EIvtfIT3cgM6pCzA4OwODwBtwQT0fk7GJJ9kp09ZLs5f3adlYtuMtB7BYvI8vz1qgTx5cTfv2emzq6gPMjt6Ac/EAKGzqhoY0bE+Iw8dFRcx7/6POMLK17LM1odFgcLbMnTYFTY6pQHoF3sfd3AD3hSuo6uoBjrv4gCNOfFDZ1QlonboAjNcVKHv43FcmRtSrvhmd1aT6bYV0n8fGvl84fXKcZGhaoTK871XUTwAYd+em2Svr7A4wv6BGOiHprH7q1HWGjRt7R2RltVkJ2/EWAFajdyi14PuVK5ZrUwcdUfkENep5AaDCJQDonX2B2jOwUdgv/PJ3qenIV+Hhcxwcmpq6zWn0Bdl+47jPa5cvmYAPSjEqugU85LwEwOgqAMYuHsDo6Nto5Qc9snoHPtJ7ezVqPNyAxtMZkJ5dgSzQ/RGSEl2PTvx65cavvgrY01p6dXJ6r2DqVwNlYzKLRFF9Lsn8PRoJd1dAdXUCjIsbIP0DgSEl9aRp+ox15YsW9ZIcO/aXVy9hx1uCxoYz/JNrsuYRiYn16oDgx6SbJ9C7+QCzuz+gvboBZXhMw46kNBRWo127dm1WfTSPq5rSaOOPJ7ocXbVqvDo1hZL27HGX8fUBWjd3wHVxBZyrLzD2jLpelTLsiHVwRj0e0ueKwofXyHg5A52nI6B9nIGqh/dDeULUYXTit6tK580LfvU7Qqxdu/bDLV+Nji37cvABcXTIz3JvPmB5bkDv5g40bnxAevs/RiOjT7DTZq0mtu7qZq9e3zLAyNaoZzwOr1gynx0yqEYV3OMJ7u4JCBc+INw8ARHQHcjDom7Apu7XA2LmOnTo0NzUfalAaKyu7lI9Z/43RHKqThHc8w6UG7E8AWBdeQD39GtE+kY0iBMHEyWjvlpbNHbsqoL0eFlpaPeLcj/3pkmC3tMFsJ5uAOkZ+BRLSjim+OqrrMJly/wcMluRJTn1fa9o3rSY0mFpB8ThfX7GgmCfzg1wji6Ac3QFqE/gU3Vc8hHlN9OyJavXBWdKJPZI9zYAVqMPNCqvszkrl1LJyYckAYFPGZ9AoPHwAyjPC5T7+DeWhUdc3ZOeRo4OCZnXocP7sM/WclzVhKuc+vMjOTnjqKRUjcQ78AHp7g0oJz7AndwB4RsI0KjYq4WZw9GJcfHzunTuHNfl009DF36Z8WXhiNTi0n7dLiFePKDjuwOzBx8YPD0A4u//WJ2QWKeYPHVp/jff+EkkktdI1zej73u7vh0TIx0x5KAopPdluScfsK7uTemb5fsAoVfgE2lM8iF65vyVpUuygu0O/7cAjT+dFZxcsWw+lZRwSBUQ9AhxFwCa7wNYT78mPZtowICGranJ6LCQfvM+fVaNwgKhuc/WlEZ/r6hwsq1Y/K0qNYVS9Ox7l/MMBFonL0B14QFE4AuwAbE3hcNHUeMHDlzwmbt7c6/OMWxYmvOGb8Yky0ZkFCKh/S8TfAEwOrsBmysP6PmeQBnU/aFoYEKlbMKEZfLcXPj3vjaRmD9//ofbxoyMKctILVRGhF4lfHwB58IHtKsnwDwCgCyoz0NRZHw9NnnmCmtpKTwC2En3R6DJpExqvH5Ymr3AlDK4SuUX8BR34wHCjQcwnidQB3VvFEdGNewclIZ+HRcz1+Gdd5rHVbAafRHZzhbsdLbMnTEFH5RqlPXs+SvuFQD0HgFA4+IDCO9gIA8bcLswI4NdkD548Ud//Wt8i2t8DD8fEZH2MZ29PEE9fGixsne/ayzPB9i6CoDN2ROQLgIg9Q+6p0pJrVVOmrBk88yZPg6SVj2r75XNnDRQMXRIsSo8rAHzDwQEzxtQAn+AufsAqU/QEyoh/ZBh2qzVWPbyPnsQpOOrF7Djn4xGjPG5umz1ctvAwfW0V7dHGndPoOXxAe3pCWS+fkAUHnll9+BB6MiQkLmdX1Z9vKhGz5TsdbLOmzkLS4m3yoODHjI+vkDD8wa0mxcgvIKBOjL2VvGIkdykpIQln/71U0g2WATAcx/s1b2oQOePm/9h8fTpKfjIL0Vkz8hrBtcAYHXyBgZHPiDdBUAeHPRAmZZsU86YtiB/5mSf1vaQbJw9+71tI4cliIcOKZfHRF9XB3UDOM8LsC4eQOvhB0i/4MeahKSztfPmbaGzs0N8MzPtZ7o3hcYTJzzPLVm5uDJx8BGTX9+nRvhwndyBnscDVFAAkEZGXtualISOCg+d07lz59ZVHzqlW+WCaTPwlHgr0rvbQ8bDA3Cu7oB2cgeopz/ABwy8XjJ0GDMlIWmJK4+X2KJ9AiPba1Vj3q5dfy2bPiuFGjxGpO0bd03HCwJGRwHQwVaHBx+IewbfE6YmmmXTJy9G16+HUfI1jBo16qONY4YmlgwbIpJHR9/E/QKB1tUDGFwFQOcqAJrg7kCXmHxOO2XKZmTdmn4ODg520v0zAatRWCCcWr58UUXqkBrWr0ej1RU2dXlA5+wCWF/vRnV4SMPetBTs6wEDYBptFk++VI3+VFjoWDVr8kwmLb5S1T3gAestADo+H5COLkDJ926UhkQ0FGUMI+elpy/q0LEjjGyQbO7PyQYj22sRCkLQu/dHzPxlqVTGWKG6d2QD4RUAODgvdXMDCp4LEHXz/w0bnFJLTPoma8v4LwMzs7JaI8x7278ek1w2ZFC5KjyigfYLBIyLO9A6uQG9Kw/A/65JTD2rmTxlc/m8eSGIPb3+89CoowRnVy5bzCQm1JGBwQ+NHj7A7OoO9M7OgPDkATys35XC1CRkTGifOZ91bpogvFaN3iAIp/pFi2aQCbE2VYDXQ86LB4we7k2EQwWeQNw/pGHvkCHY+NjYBU5OXzSn0eYz2+uN3FewZ2F+p72TJiWLR44plYSGX1V7+QDa3Q3Qzl0ByXMGeLDPQzI57jA+dfyqbdMmwu/3GtbPnfv++mFDEmTDMktl4eHXVJ7eQOsmACZnd2CApmzfbk+0A1O+r5o5b7s+OzfMwcHBPpH4vwa4ctKtdtGCOWRSwiEsuNsTVuDR5APVujgByosH1KG9r+xLilV9HRE2q1PnpjNbc2R7kUavlsl4lmmzZ2CJSTakW9BDju8KjHxXYHBzAZSXJ0DDwm/sTU0jx8ZGz+/cpQusaGFV2GYabQsx+Qs7bZkxNbl8xIhiJGrAZdLHBxicnYDZuQvQuzsBvGfAE0VK3CHhV6OzDz5rDr82BvPNzPxgx/jR8cWDBxUqIiIuUX6BwODMA0ZHHjC7egFjcD9gTBx0Xjdx8g5VVlZ4lwnJ9kj3f4EmkzIm453IWTGbTU+vEPsFNpLQpMwXAIrHA6i3x1Npn+5X9iUNVH4zIGyWg4PDgBZEaaH6KOlimj57FpGYWikPDH7ICjyBmc8HBp4bIL08GmV9e94oGZROzUtOXvROhw6QbHAI32wHbKosAQDtz9XUdKrU6b6o0BFONYjuk2NtjZ4Ego+QJUsSiLFjitCQkKs6bx9gc3UDFlcXQLq5AkmA3+/y5KQj0vHjV2V9OT6wDZXJe3umTY6RjxixXxEWfhH18W+k3TyAyc0TmN19AOUdBNjE5POaGdN2iJYvDkOQPXbS/W8Bd32cWLZkMZ2UVIP16HWf8g4AlJsHQN14QObt/VQcHnppZ0KcKqNnz1ldP/sMtj6ax1WQbE1nretmpmv1kkWT0IQEkyqo2wPO2w9Y+N7A4u4BaL4HUIb2v34gI5WaEBOxyNPVtfnM1qwcaYpsAIC/nD91xLvKzA6zccRCE00utrLsKBvHBa5fv/79V783hFml+rBo0jfJ6PDh5XRo5HWDpx+wuAiA9gu3ppYJ0r33A3VqWq1syqSsvNlT4fd+DfDaW8aOjZaMHHFAHD3gJ5GvXyPNEwC9oxtgHd0AGRD0lEpN+t64YO4Wdkt+qD29/i8A3VVH5y+ZzyWlHlH6BzeSPC/AefoBxsMHKAOCgBC6qxLjlaMiImY5dHgfRjbfV89sjUernK1LZ09UD07Sq3p2u0cLBEDrygMGJz7QeAYArH/YjQOpKfSklPiFHzl9OvA5YZvPbC9S3YUzZ/j1Zt0kK4fJLBR6qIIja6wMI9Nh2LzygpJeU6ZM+eDFF2+BtLFjPy6aMiUNGzJcxIUMaNALgoG1izewOvoAjZsPUHXveV+YklBbNGnscvn6pubw63262Nj3D86ZEV0watje0qiIn5R+voBzdm2qgBkeD6i7BwJ1csL3yNSJG8o25vcWbJ1u19P9T9BkVCFtbudW5M7WJ2dUqryDAe7iAXBnPiA8fAHWrWejBDZ1k5+tX3jnnXea0+hLsvC72MEvjmbPnUJlxBtE3bx/J3x4QMNzB6STC0DcPBoVvUOui4ZkUnOepVFINhjZ3F6KbDpduys//uh+vMIyrkpLKcyE8rKFQu5XcdRvlSzzE6dWc6pyybKdG3b2j4mJaXLjv4rOAsFHyumzUuiM0UKiR0SDSdATVLsFAVNXT6BydgXFgV6/SwYn1GGzJmVt/PargCyd7rXzoqur67s7ZkyIFo0edqA8pO/PGBQVeMP9J+5AzXMBZb6eQJYw8AQ+fXpewaJFvdpM9Xa8jsbKes+fFq9aYI4bVKP173df5+YHOCcBwFwEQOIbAMQDoq/tSEkhMnr1mvvZM3fVa2m08UJt12MrZ0/EEkNN6m683wnProB2+QywLk6A8PYGsOWwNzWNmBATs9CTz2/Z1H1RIEDinz9yyvuQyTK1WqtBKjnygoVGnlZpSFCrZUEFQz3VIsgNXCK3CAuLs9avWd/H19e31Ugn2bOnU9lX41OIwaOFXL/YawZeMLA4egLG0QkoeF2BvJffQzQtrhab8k1W6bIFrabXrB1ZH2z7ekyMKGNwoTwq/KoiwBtgAldA8F0B7skH8oDAR+Ko6BP01Jl55t1F0CNhJ91/hcbDh53Ozl8xtyp+yCHGozswO/oCm6s/0Lt4A8Q3CJSFR1zelJSIjomIgLLwVqvR381M18qsOd+QmfEGdQ/BQ5b/CdC6dgZMl86A8hIALCryZkHGEHJCcuL8Dh991DxffbVA+M/vvz/ucbSyenIFoyGtFH2tgqUeVWkpUK1jQI2OA5UaDhhJslGDYHcIuVIrLimbv2nt2p6ZmZmtki4mM7OTes78ZCJ9RBnTK6JB5xkIdC4ugHH5HBCCLkDd0/+hMjmhTjbuq2XFcxf7t7rmy8npvbKZUweWZgwqLAvve1kZ5AtITz6gBTyAuwuAzC8YIANTTqi+nZq7d/W6YAf7UsTWAcc9tzQa13PZq6cYElKtlEfgE20XKHr0BCa3AEB5BjfKQiKu7h6crh4Z2n/2+++/D8nWHJVekK1BIvmidsXSieiQJI24p89dzt8dmAVdgMblU0AJXAAS0udm+dAMZkZi/KKOz8jWUoDZHNnaXfz+e48jVRUTqgwGhYXhLpgp5oGFpZ6YWeKugUBvanH0tp4k75oY9oGJZu5pMfwSqVQR0tLShd9t29Y7Pr73i+/UEvHx8R8pps5J1gwfU4r3C71Ke8GRnDPQuncBOM8ZiP18flcnJNWwU6Yt3zJunH8WAK+1TCYkJ3fc9OWouPIRQwulUeGXlX4+AIVTFr4nID38gNjL76kkJrYemzt3xf6cZd2yWm8w/3ujsUrjVbd03jw8Ic6GBwTe07nBzZICwDl7AsQruFEZFnvlu6RUdGT//rM7d21Koy0jW1MavYWYXGwzFk3BklL1qt697hI+HkDHdwYGt66A8eIBIjLsZsmQdGZybPRiPr+pGm1eTvMisjU2Nna4eOpI4FGbbaZVy+FamrxoYJnfTRz3QEdTv2AKWb2wsBAVFRfiapmsisWJSwaS+l2PE480CHKVVMgNCnHJiv27N/dLTU19cZ5sCZhehZMnJymHDROSAyKuafy9gcHdGWgcuwLSxQ1QQd0f0AnJNczkyUvV+ZvgWO61ycaUrClN6VU4ZEixfED0dSS4GyA8vADhxgcYjw8UwcEP5YkDj5DTpuTrdm3t6xAvsBcSEE3rF2w2t0NL5y1gBifUSoK8n2LwF89zAwZPrybxpLBf5OUdyenqcbFtm5QvlpQ4WWYtnMqkZpqR4D73aGhMcecDxtkZwCiChYXeLM0YwsxOT1/c4aOPINngOam5QPh7Gq2v9z9sMS6s1nEaM0c1aBnygZZjHnEMfUMpk9ZuWr9+95QpU2bMnTt3yo4dO9YqJHKWRbCf9Tj5xEgSj7S4+jalFltVssKc/fs3hy9atOivL/2DnwOu+RLOn5OKjh4hJCPCGjS+sDns2jRN0LsKABHY7T6RnFKt+OabZRunTg3o0bp98L0DX09KKM8YUaaIGdiAdu8OcAEPUAIewATuQBroB8jUpNOaGVM2Spcu6D9bLH7v1Qv82wGYqninlmfNopIGVim6+z7GfHlNBmVK4ArIAD+gjIq+tjstAx3ZN3T280H8ayblG4WFjnXzF86kktPNqm597mt9ugGdiycguroCJU8AVCHh18SZw6gZ8XGLvvi0SfUBZduvFgj/eebMGf4hk2FaJUtpbAx5zcZR940a5h7LULdlMkndxo3rd6Ump379ySefhHfp4tJ9ypTp8YUFxVmoQqXRktQVq4a9a2KwRxpCdpvGRJVqZfG6koO7o0eOHNkq6aZPn/6RaOqkZHrUqDIiJPQq4+kN9O6Cppkp4c4D5X6+92WJcbX49Ikrd06eHNiawz9rQlbHjRmj48uHjRQqYmKuId0CAO7hDhBXR4Dy3QAaGPCETkw8Y5k+c5Ni0fJ+AsG/caRrNNZ7fj9n+QJtbFI1GdztAe3NA5QXrLicgSrQGyijIxp2p6bgYyKi5nfu/JJ48gXZQA3rUjt72jR8YGwlFtztPiPwAVZ+ADDBIsPdC0j6h13dkzoInxoXv9D1WVMXEraZbC8i26kjR7yrTIaplSyN2yjiSgWJP7ZxzAM9SzYoFJKq/HXrvktOTv76g3ffDYFzBAcHh0/d/f0/X7Uqv7+oTLSIQlFOR5PXjBz+1KRBgI6R32Vwcb1KVrR+33ebIzMzM1ttmWRlZX1cAtPr0GGFSHjkRcTHF1Du7gB3dQYKd2eg6BX4EElPOIROGZetXJ3Vqkeif2rqh+uHjUwQDR1aIouLbJAFegOE5wwYd1egcecDNqh7o2Zg0lnThKmbLPlb+zvE/xv26QBb4/LjnKwFFXGDD5GeQUDP82x6wwvl4QZUQd6Nwqh+13YPTsa++Qcm5UPffedYtXD6VCo1zib39XwMVRkGNw9gdvUBWq9uQNEn7Obu1HT82+TkeQ5tjKsazzR2+PHMGd/6StuMCp2GsNHE5QqK+L2CJB8acfy6Wiq2rl+bvy0pKenLdu3awU6+h4ODwxcODg5wuvCfn3766Qfbt2/vXl5augBTKjQcjV036whg0WPAwCjv05i4Vi4qXLt5c15kWlpak2jzVfzNy+vDsgULBkpHjdovCgu5KAv0e6r2dAcY3xlgXq5A1TvwITY48Zhi4tjcDWPGdIuf3iph3ts9YXx88dBBxcURfX9WBvoCTsADBpdnA3+NX3dgSxx81jJ51uayeYv6ZR08+O8zkQDnzrmcy86fpotKreQ8uj8yuvoCk6sn4Hh8oPISAGlE/2t7hqTgo8P6tTQpv1QgQJOyafbUWUhytFka7P2AgoN4Hg+Y+F6A5vkApE/EzbIhQ5kJMXGLujwbxLcUYP59NnrkXGC1yTbXptFQFTruxwqWuVtJEPeMKuQWWiqq3py/dkdKUtLYDz/8sL+Dg4Ong4PDZ8/J9mIikJyc3DE3NzewXFgyC0eVeh2L3bXoCGDTk0BPq38llKJaccnBNTu2bAltqzkMnVx7p04dqBj35f7ymIifxIHeAPN2B5SHC8B9eUDe0++xPDn6hPqbset3jxsHe2yvpVeoMskfnhFbOiLjgCwy7Gc13MTp6gYMLnxgFfgDY0DvJ1xs8hlu4pSNwuX/JmbrRpvN4/CS5bN0SUPMjE+fhyZHX2B09Hq+Msu/URIScnV7Qjz2VVTEvI86d25Ooy+1Pm4aKGfj7MlTkKSYCnWv4AeMNx8YBXxg4gkA4+MPlP3Dbu1NTGGnD0xY7OromtBimN+SbO3OnzrvXWepnGHhdLSBYRosLHO/gmHumxDsKlpcZl63ImdrSnzS2Hf/nkabyfZaqwI+vHW56wKVculKlkAOGRniboWWATaOAnpMfZdSyCvkZaKVkHTTp49qtWUyPSvro5JF8+JKvxxWKIwNv6bq7gtoL1dA8R0BwusC0J7+gEyNP4uN+2qtcvmiHq0pWKDZeveUCdGlmekF4sjQy3I/P0C58Zt+0EYneH+CARubcFY7ceI6Lj+/d0TW2H/NSAer0du02v1U1vIFXHJ6tcIr6JHO3b+pqatz8QEqz4DGsn6hl79LSVePiYxsrkabz1svHlCjhf7MtnTBt3h6skEeHPCA9fQARoEHMHl4A9YnAEj79L21b1A6Ny0lack7HTo0D+JfrUbfOXaszrfWap1u0+lVJob9SUtRD/Uk+ViH4tfQEqFp3fLsdQNCI4bDI9LzyPb5PyBbEyIiIj4oLy0Nx+SKtRoUrzAR5B0bzQArRTcaCeoWq8KMapF41Y7Nm8NjerQe6WB63Td3ekr52GFC6YCQa1iwT9P2TNr1iyYrItHDr5FIjT+t+vbr/LVTv+rexttu3t09/du4kjHDDxZFRvwk9fVvZF35wNDFFRiceIDxCQD6hMSThilT1pYsmvuvabZuvPWD6/HclTOx+PgapX/wQ9zNE2jdvIGJ5w8or2CgCItu2JGchg7v33/2Z383KTenwKaH3HjiRJeTq3PGIWmppKxH919pHx+gcXUDtKMLwPjeAAmLvFkyeDAzIWbAEldeU2RrOa5qJtt/XPz+okeFQTfLxFK0lWPOWTj2FwNF3+cQ4paitLxi/cpVm+Oioke2a9cOpp2mAgEupPlHZGvG/rX7P9yzc09/Zbk0m1UilSacumujuMYKRvvESDA3GAVSISsW5mxft7lf//79W+3T7dmT32nf5PEpyJgRYuWAkOuoLx/oPaF2zxHQAkcgC/J6IksacASb+W1u0bKFsOJ+Lb1m7djxQd7XY2KKR4/cJ46MvIR4eAOTqwBYXQRNknXK2w+arY/TU6Zlo9u2wR/la9HyT4vGCoN73fJFM8j09Apltx6PoUkZd+EDzM0DYE0m5QE3dien4tCk/M6zCUKzSfnvka22tmvdc5Oyqnuv22oePJ8ImnZywJsp7htyfW9KKg0H8Z9+0aTUhdERRraWZHv39NG6oMNWw6wKlqLMFH7FRhO/2mjqNz2CX5IVlRlXL8/eFB8dN6pdu3bQMwD3vsE0+pLODJ79Ghsb34eRsuX/3gwnJ6f3NuZv7KsqleRolHiFGWevW2jNExPNPtWT1C+MSm1Vlgqzd2zYEDpu3LhWSTdhwoRO0lnT06CpRhEVcp0J9gN6gTOgXD8DCtfPgLS77yN0cOIRWL2WL1sICfP6d+nRo2Px3LkDhEMz9stDQq8wfkFA7yYAeid3oHPhAdw3+IkyOrFeNn7yCmnuusAerWvy/jyA0eSOmeCfzFk2F09OtIn8A55QvoFNEiOE5wlE3n6NJWHhDd+lpZNjI8Lmd3jmiH9NFg5NyvXQpJycrpH6BD0k3X0A7SQARFceILwDgSpywLX9GZnEuLiYhR06doCqj2ZZeMs0+pfzp48FH7bpF1ZrKLaSxi5WkNgdK4b8alSpLyGFpZrcxcvXhPQNGQo9yq9EtibAKcQPP9S6njpaHXLmSHXsiaoq/+I2tHB/+9vfPizavr8fUipbRksRSoPiP+tJ6pGJoR8bSeI2q1BUqEtLV+/ZsiO0repVIBB8VDJnTqriy1HlivCQBsLfCzCwiHD7Aqjhkuoefg+w9IR6dNK4bLjLRNeKyiQiIuLdfRPHx8qGDyuS9A+5jHj6AB3PE5ih1IvvC0RegU8k0Um1+LQ5y79buDDoT222BhdO805kLZmFJw6sUgQG3Ffx+YASeAHa0wco/AOhSfnKltQUZBhcmdXlhRbtJZNy4yGrY+XSxd+qUlIoRffev7HQpOzsBegufIDx/QAeFXuzbPgI+pu4uIVObk7wGq312d49e+Jw98NV1lnVBhap5IgfKij0jg1H7hiV8itIUZFh/bIVa6NCwiHZYAUII9snz8nW9D2uNF55/8S5E7E1NdasCouusMqoKa3WaLK1KDowKysL/n9fA9TI5S3L61a0v2AKKpVhWgy7YWLoJ2aGbDRi6G1WIbPJS0tX796xIxw6tl79PMTmgwc/Lpg8OUU9akQZGhXRABcaknxnQPAcAeLpCmTd/B/KBsbUoZMmZGPP+nSvpf21a+d/uHXUqDioMkEio65Q/oGAc/NoMlvj0Gzt3+uBMDzukGrSlGX0/v2wSHvtGm81YKppxFnP0/MXzjUkJNlUvv5PCHd3QPDcAMbnA1VgUKMoIrJhV3oqMj42dvbzN7w0KzZe3PhzRXtcLLOnTcHTk43yHt1/wTy8gY7nBzTO3oD0Cgaq8OhbxRmZ7IL0dGhSbibsq2m048kjR3ocqjAvqDBoEauWPmVhsWsmCrmtUckvKIsL9WtXLFsfFxk5rJ2DQ28HBwfec7K9GAM1NjZ+ePTE0biqqoqDFrPxjFnH3bJqmBtWlj5mILG9itKi5Lw2RlhQIjRnzhxPcVHJHFatNhpI7EYFQzyuYIiHZhK9RSkVVVJR2drt27dHwsnDqx+GgAN/fNmiZOWIYUJpZMh1tJs/oDzdAO7uDJQuzkAZGPiQSkk5yk6cuHL37NkBDq1vRu8omjU9TjFsWJEqMvIaHgh9r96A5vsCws0bSL2DnpIJKXWaSdOyVUuW9Dyo0/05qtemXR8I5X11Uc5Sa1RyHcHze6x1g0N0PmA8BUDu6wPKwkKv7h6Uho4KDYWr6Vu+4eVFGr0g3N/VtnDGTDwlzioP9n9IeXsBDq5xcPEApGcgQCNjbpaOGMVOaTIpNzniX9ezHTv2l++PHOl52GZbaNNpMJOGPqPjyGsaBr1J48qL4tIi3ZqVK9Y2ke1ZgdAc2V7cbBgdT5w4GldTWVlg1hovmjSGRqtOB2w6DTBz5FMjjZ3VoIrdZfu+S0yPjv5b8+dewbsHduzoQ0qlK3WIwmil1NerWPx+pYZ8oCWRX9Rq2SGRuGzt1p07I5KSklolLoyABVMmpinGji6Xx0ZeVQX5AYzPA5SLa9N9IfyDHjOJyXX0lGnLtkya0arKZPbs2e/tGjkyQTx8mEQeG3tDHdQdkO5eQOPqCfQCP0D5BT3mBiaerJw5c71q+fI+E1qf375dADUW7xOLly6CjnizT9/HZkcvYHJyB0Y+D9BB/kAaFdawJSkeGxMeMrfz67s+mnCbFLlVLJg2DU0baFb3Dn7AevEB5+ICaEc3gHn6ASJq4I3SzGHslIQEaFKG1WhLk/KLM0jD2bOCQ0bz7CpOS1o45rSepa6xLH4Lp1QXxeJSU17uqs0xMTEjHNq1a5lGYWR7ls4bG987depwdLXNsq9CZ7hk05pAjakKVBktoNJoANUWHbBqqCdGAjlLycv3lxbsHjx37iRYZLyGtfPnf1i2e3s/UirM1qmllSZC8WsFRzw2aqgnBIn8JkcU1WUSYf7u/buj2xr4L8rL++v+qZNS5WNHlyniohuUfn6AdeM3mcB1rnyABnZ/oBqYWIV9O3EF8+xdra9Vr5kTMjutHzs8qWzokHLlgOiblH8wMLh7AbOrBzC68IEmILhROzDxNDtp0npi/Zpeb21zGFZuv+nFAUdXLVxmSE+tIby7NZpd/IHFxbtJe8/6ezciESFXd6clNTV1HTo0jauaR00vItt14f6ulbMnzSDT4ipk3X3vUz58oPfgA9LJGSg9vIAsLOJaccZQesHgwYufm5ThNZpNyi+auheOnuEfNpu/sdGs0kLS58w0fVlHkVdxQn1OKCnV5a3N3ZyWljbm3XffhdUoTKOwQHiRRm/cuPHR8SN1MXUVlr02rfanSq0eVButoNpkA9UmC6gw6EGlSQuqjBww0fgTLa4+T6nkhQX7dqdkzZzZahEQGxv7vqhgT3+VsCiXUogr9BTWYOCo+zRDPMYo7I4SV1eVqyTrd+zfET127NhWrwHN1uULF6aIx4wsLY+IuIw1ufMFQAd/jI4uQOHvd59OTjxMT/gm+7tpXwe15QbbNWZksnjIkHIscsA1jX83oHXiA1MXN2B24gHKJxDQSUmn0MkT1+2ZO7fX1jNv4c7hB0ax78m8+TncsPij6m4+j3BXd6B1FjTNSDFPAVCF9rlycFASOja839xPn00QYAp8KbL9rlJ1PbJk0TQqMdaq8Pd4SHi6ALhhUuspAIiXJygP6Xd9b2YG/k1M3EKnZ62P19MoAO9cOnHO85DeNMFMUVIzRR034ESDHseu0qjqbHl5GZ23ds3a5OTkkR9++GHLavQF2WAaPXXqeMIhm/VAhVZzzsqyjdU6A7BqdI1GhnugIci7WgK/a2DwByaWarSwNDDQ5EMtgZ9A5OJdRXv3DoyL69u5+XotMSUz84NdGzf2VQhLl5GIUsOQ2FWaJh/SHP2QYMnrSlxdKZQJ87/b911kRkZGq9dYOGFCp23TJieJx44tUkREXca9/ADnygOsY1dAuTkDLMjnMZUcd4yaOj5385Rv4D16LdKtHz36/V3DhiWgw0YI0ZDI6wTPF5gdPUBFV37T7BX1D3yiTIg/Sc6ali/MWvJ2rfRvPHXKvXbl3IXU4JhjaD/fRszTEeAuzoBx5QHSzw8oQ/td2ZUQjYyNDJnb+dmL0l4bV90W0+7WGXOn4YlJJmVQwAPKHS5bdgU6vhvAfbyAOjL85r7BqfTYhNgFnZ2dW5qUXxJPXjh+3O+QxTKhSqstMzP0YQNB/KzHseu0SvmjtLREk5+Xm5+ckDDsvXbvwXTRHNleVKMXLlz469H62pT66op9NUbDuSoN97haowU2jnuip6g7CpGodt+unarCPXtQRCqu15L4bTPLPLFoWGBk6N81OHoclUl3Fh3Ylbxo0dRWz3R9+/Z9b/369b3EItESTK3SkwR+nWGph7SGeoBx+A0loawWSsrW796xI3pmG9EyMz+/085Z05JkI0eWYFFRVylfP6B3cwFGN0eg83ABWK/Ap/Lk6COlY0bmFsya1b21yhNK4b8b81WiPH1IGdk/6preIxDYHAXA5MQHhIsbkAQGNEoT4k6VTxyXJ9yaBxvMrUXLNweYRu+JlM5HFiyZwaYlVMiCPBtJL0dACRwBwXMHmK9/o6x/v6v7khPU4yJD5zz3ILxWIEBZuGXa3BlEcnqFPLDbPdKdDwzuPGD2EADa1xuU9+l5q3BIOrtgcPridzp2bG59vNpna/fjsWO+hy2WqTaOFVtY5pCJob/XEfgFSik/JS4uZPNzV61LT08f0a5dO1iNwjT8UlO3oaHhg+NH6hJrqyyllUbtDxUa7n61VvPIyjAPNRh2XVkuqlyVtXxLalLSuC9Hj/5697Zt63Gl0qQniQYTSz8xsXSjgabuczh6ilIp9hXv250ye/bsVqMUNNvs2LGjj6RcsgyFpCOxqxSL36N1xD2CRX9FUHmdUlq+rmDXrgHjx4+H13gtSvF69OikXrYoGRszqlQVHnZNExQALJ4CYIQ/UncXIArweShNSDgp/XrcmpzRo4Pa2GXSUTZxSiKZMaKM6Bt6lfMOAFp3D0A6uQLE1Q1IAgKAPCX5hGzqxNxN4yb0RPY0ma1fI+8bATh2zuXMkuxJWGSsFfHzu8/CHR0CZ8AJXIHaywsoQsOv7ktKQkf26zO3y7PIBg/3L7mr7hoMXazLl0xSJyUZ5MHdH3De/sDC9wEWd0/ACryAql+/WwVD0tgJAyKX8J/p2VqKJ1+Q7drx4x71VtN4i5Yr05P4YR2BXdLg2E8UojxWdrBAvXLZkqwBEREZH33Uubn1AaPPi8jWlEaP1cbXVdv2VBh1Z0ws9djEUMDC0r/rcKxBWlpqy8vJ2RoVFTEGTiE+/vjjoKmTJg0sKypaQanVOi1B3DDQ9BMzxwEDTT/QYvgpQqncKyotSk5PT2810o0ePfd9SDqZTLJMjSr1JIU0cFrsHqfFnzC0+jaNKm2YWLRWuG9f7JgxY1q9RknJ1o/2TBqXKhszXIIPiLyh8Q0Aemjw7uoKUFcBUHXr9RhJSz8snzRp9Ybp01sdg0l27Phg35gxiejQjDJVRPg1lQ9cWcYDUOav9fIHSI8+j8UJqcckU6fm7n/2xpw/5kxHzZgTS2aMINHeIY+0nvCd7+5A49wV4F4eQN4/9Op3CUnI2PDIuR0+evGGl5f0bOCcycW0YvZExZAkraxP999JTzhf5QOjM/yHBgK8f/jNguRkdmJC7OLn46rX+mwQx2prBdUGw0SrVlNiYuhKHYH/wGLIVVypOCsqKyKzs5ev7NOnT2qLQf5Lfbbb589/fKy+Nr7GZt5TadSdsWi5e03RiiIes5j6mlRYYl21cuXW2AEDRrdr1w6e+2BF+2mXLp6frF69uq+sTLSUUKt1HE5eMzLcU6tWB0wM+1BHkOdIlWp/WUFByqJFi1olDJQ27dy5pZdYLFqCY3Ijyyhv6TRIo4FFHxtI5KZWpaxFy0Wbdm/dGtXWGCxt5tiPv5s+MU01fHg5GRp9nfEIBDpnL6B38wWMwBeoevV+JE6OPyacODa3fPUSmF5fO4/BXSaFk75OKBuaXiyLCr9GBwQCoxvc3+INCM8AUB4SBUQjR1evHz12PFTIP7//r5H3n4qCtLSRpfHxJ/GwcMAGBAKczwNynutTYffgy/sSk9XfRkfPbi2Nwl7ddUbY9dCqOVOxYQP1pT29f1H78gDnwQOUsytA3D0bZT1DbggHZ9JzU1IWOzwzKcPD70uqD2j2vXD6NK/GbP7KRFEiI03VGinyhAbHzmBK+XFhSSGVl7cqPyUlZWj79u2hnAemYXizXvTZ6uvr3z9VV5dQZ7UW2LSa02aWvm/VsI/NGu53jkCviMuKbTnZWdviY2NHv/vuu1A50nLk9R+wKbtr166+kvLyxSSCMjqKvmbRaEGFTg/MLPdYR1Hf0yhaUFZ8MH3OhAmtTiS6dOnScc/Onb2U0pKVNCat1FHKOyYWeWCk0Yd6XP0rp1RUIyWiNXs3bQtLi4ho9UznIOj8kWrqzFRsyKhypGd4g8anJ7B4BAGtmxdQubmBsmDvh8rBA4+jM7/N2zBpXLfWV/o7vLdjyvh4xahhpUhY2BXSx79pKaJU4ANKQ8LBgcFDLi5NTl72/D7Ce/hmUysya3qKdMxwQ3Fk6KNCX0+wz9ujsTSs34VdCfHy4X37znJ5pvpo9iD8fVz10yFH6IhXJYeZJd3df1f5dAGY+2eAgpuFfHyAKiKyYU9qOvnNgAHNJuXX+mxwNvr94cMBtQbrJCurLTGRVIWBIM5yKHKOVCkOlRYdUMLIFh8fn/m3v/0NFgjwzNZMtmfjqitX3j91uC7hqK1yd63BeNLKcg8sDNNo5th7Goq8Ji4tteSsWLYxIiKiJdmao+OLmw0jz4YNG3rIyssX0Bhm0lL0fatODyqNJmDSaJ5oafo8jqhLpcKSoZMmjW61Twebsvu2bQrB5GVrOFRi05GKa3pK9cBAIo/1GHqDkykqsCJhbsGmbWGZbYg4Jfl7OhV++W0qljG6nOofc50TBAKdqyegnJ2Amu8IVL18H6Np8cewqRNzDy5Z0mr1On/t2g93jRkxUDU8o1gVHX21NDAI7PHxAdvCwxp3jRx+YlZa2pLnKzXg83wtUv5TUbl3u6d6/rS5+9ITqW0RfU9tjgipW5ecWDo+Lm6aQ4cOzbs+XkqjNyll064PIjPeoOjt+ZDw/BTQvL8B0qkzIHwEAI+OvHkwM4Man5CwoEPnJt/oa7s+YEP25OHDAYesFRNtnK7MRNI1BpI8rsPQ73GF/Jio+KB65Yply8PDw1NaREaY0l5Etsbr1z/8vr5+QJ3FtLdKp/++gubu2xhNo43VPNHi+A1xaakta+nSTaH9+kFNHDz3tWyfvPbLhgqRrRs29FDJZCtoDKvR0tT9SpMJwD86mm7UUMQlGlOXlRUfHLI1Nxde5zWMS0398OB320KUZQVLCIWIYVDFZS2FPjCQ+D29CrnFiRUVaEnZql2bNoXBZdSvfh4iZsKETvKZ81Ox9GEisk9EAywCNK6wY/A5IPldgKpnwFMkJfGobNw3OU3vkWjtXa2ff/5+6bRJCcIRw/cXJA48vis++kJ+SmLd0mGDDiSFh3z5vMsAm9NvlnCwqbh30RzPwnmzRx+YMXXV2rFjVqT27v3lux98AJfkwS/l2DKNXiuRd6lavHgqMihZJ+7p+wsdyANGL8emNyYTnq5AHdLnlmR4Bjs7KWFxx2fVKIxszdVo0z8Otj6OH6/vVlNhmWrT6g4YKNqkw/HjGhQ5QShk9eKiQiQvNzsnPj5+0PMCA37+JbLB6Hj26NGoeqt1Z5VWd8JC0Y8raA5UMJqHUCgpKy2ty166fEu/Z2SDjeGWabRNNQUUYB7YvbsPIpPlsBhWrWeYexadDkY5oGeoxzqG+p5CVSUlBw5kxMfHt0q6wMDA93OzFgcKC/fNxhUSlkHVl7UYdkeP4b/qVdhVSi43K0Vlq3bt2hYW0UZ67d2790fI9Fkp3MgxQiwkrIH28Wp6QTAkHebuBBSB/g+xxKQj5DcTVq8b/2WgBLy+0r9/f68Pt377bUT5/NnLiubP3LHsy5HZ4b2CR7ZQP790jn5z6DGh/dKlS50XTJvWe0haWv+OH38MSQKrwC4tq9HLMo2racaiaer4ZIOyZ8/nJmUXYHBzBKwXD1CRYbdKMwZx0wYOWOL5bFzVqurj9LFjwbVW83SLjisz0LSJI4hjNIqexhXyQ6Kig4pV2VkrEgfGDO7UqRM8HLc8szWPqzp8//33IbVm8xYbpz1tZbmHlZwWWBnuqYmg7qhF5dVrsrJ3RIRGjGkhU2pOo//lDZ47d+77u7dv76eQSHIoDK3Vs8wDs14HrAYt0LPkY47Cz6NKeUnhgQND505qfQwGB/5rV6/urigvX4wrFCyFIOc0JH5NT1G3ORy5QiglFRLhwdzvtm0KaUvEqTx48OOyyZNTVCOGicmYyOt0gFeTaph2/KLJXEMHBT1CBkQfwb/9drk0P79Vs3WPzMxOeQsWBCyePjkqNjYq3KFje/hsYcEE1c9/WHsEflEYfeA+DRhJ4E2ED/lFf+uSSOkMyYanZFoUQb3uwbVbcGVW01tXPL0AFRJySzh4MDcvPXVpx79+2OxBeFX18c7ZQ4f8DllNsyp1mnITTVVpSPwkg6NnUaXysKikCMnJWZk1YMCA5jT6WmRr6rMdPx5WV1m52arVnjIz7BM4srJx2qdGkrqhFpXX5Gfn7BgQETHawaFJgAkdWm2m0bYAe2ybN2/uIxWLVtE4VmPQcL/ZjHpgMXDAwNFPtDT5I6FWFR/cvz99zZo1rVavEZmZHxTs3NNLJiyfq5arEBJHv2cZ8raWJe6wuOImoRBVyMUHV+3ZuTFiY1ZWq70+XkxMp/L5c9KRL0eK8Kiwq4SfJ9C4OAKzO/yhuwLUz/8xmpRSLfl26mI48G9FZQKfLUy5MMPA5wqJ1vxs33yV+grgA4FfDj7gF+eCG3tLnGoWLJ+Fp2aYZN1632W9goDW2QOQX7jClVkA6x9+TZYxjJkTF7/007+blF9Ko9A3ev7Kebdqq2m8jaPFFoasMZH4SQ2GnCbUiiOi0hJ8/fq1q5PTkoe0b9++uU/3UmR7nkYja2y27TaN9qSF5Z7AStKq0T4xkNRtpUhUtXbVqu1x0dEt7YDNjeH/Ntma4eXl9eEz0omzSRSt1tDkfbOOBTajDhg17EOOJk6hKsX+ooK9aREREa1Wr7Bl8t2274LEIvE8pVKhJUjsEssS13W0+lcNJr1Oo+VWVFayvqRwZ9z4NsZgEzIzO5VMnZRKjBktRMJDr+Aws/CcgdHdGdB8uI0q+K40Lr0K/XbWcki61lb6PycXvJfwD2we/5eR/k3ixRe+T+rcqmfNm47HJ1lVwd3vEQJvYOb7A6OzF0BdvYC8X/i1grTBxLS4xEU81xdptLlAaI5s/3nkyGmetcL0pVlLF5korNqEo98bMPUZWiWvEZcUIevy83MHDUrN7PRJm2n0PUi2WrNxh02jPWvlNE+qDSYA+2V6ir4jF4lqINliY2PHtmvXrqUd8B+e2f4rZGRkvLdu3bp+EmF5DokjFXqO/sWs1zRajTqg5+gHMDorpOV79uzaltCW6jc+Pr7D1q1bewiFwmVKRMmSJPKDjlL/aiQVDw2k7AaLSWrk0sJ1O3asD48fFd+qni4vb9Ffi5+JOIuR6PDLiL8AMHC7gasLUDsJgMqv3wMsNqMOHT9jeXlu6yv9n9/L1sj4xwP+So7v2O9aPXfJDDp1sFXmH/AACjB1PA9gdHtmUlb1ibi1P20wOSk5db5Dx47NJuWXlwEeA385e+ysoLaqaoxJr9lnZAirCUdOGNTqc4xcXicuKpTlrVq1Mi0tbUjHjh2b+2wv6dnOnTvX6cf6+gHHK6u2V+kMZ6ys5mmVTg9sOh3QktRtuUhUvTo7e8fzyAYPxM0Orf8V2ZoBz1gw0sml4uUMiZl0LH3LrOeAWccBHU0+YjD1SVwh3Vnw3XeJbSmHe/To0XHXrl09RCLRfESlIBlcfslIKO6baMU9HSW/haMia3n5/py1m3LD0sa2Tly4y0S+YEGSfOywEklU36vw9eu4uytgnQRA4xQAcL/QR2jSsEOSryZlrR45MrgNs/XbiR/37nWvnDVnEZU62Kro3vMuATeO8/nA6OENSIEvQPpG3BJnDOemxg5c/Nyk3Kz6aJlG212qP+dZa6oYZ9Fp9ps0LGem8FoDojrGSWT1soKD6nUrc7JTBiY2FwjNrY+/j6vOn3/3RPWhpKM2254ag/FYlU7/oEZvBBaWa9ST5G8ykagWThAiQkNhnw2m0f+TyPYqIOl2bN7cRyYRZpGoyqZl8F8MGvopJJ2egbNX5ASqku8vKytOTx6R3CrpYHrdtGlTT5lItIhQS1kOlV8xkIrfjJTyLofLflYrygylpfuztm/f3K8ts/XChQs7FcyakKIeP7xUGt3vssrPG2h5vsDkEghYXjcg8+9zXxyXckT+1fh1W7/5Bv6A386I1hLXREWe1snfLqAGDqzDund/SHlCNakHMPA8AO3jD1Rh4Xf2p6TqZiYmLuM9s/K1lkb/48rJ8271lqoxFlZzUEeSFRocP6pDkCOcRGqT7N4vzl28fFlizMDBHTt2bE6jkGwvxJOwQDh79FDUkYqKndVaw1krzT6q0upBpUb3VI+Tv8jKyupyV67cGRHxohptWSD8n5GtGaNjY9/funVjX3FZyQoSURo4mriuZ+lGs07zLNIRyDm1Srpv797tyVOntq4yaRqDbdnSSyoqXYgpZQyDKS7oCNUtHaa8SatkF9QSISEqLp63a+uuvpBcr34eYlHeor+Wzp+aXD5ysFAeFXmDDugJDO6BgHX2AWonT6Dq1vsplpJ6WjXhq7WS5XMh6f7P78X/CWAVeaV4r3vNzKmLuaS4Q4if1yOO93z9gsATcD4BQN63/+3CjMG6menJK97p+Jdm3yicALxUIMBx1SGzbXSlTrfTSFBGFkFP0Ur1GbJcXi3dWyBaNW/pvJCeIc2fb0m2Jhw7duyD+pqaAYcqbNtqDIbDFQx3z0axwEKxjXqCvKUUimrWZOfsiI6KgmkU9gybI1tzNfpP+WXDQmLTprU9xaKy+ahaydIYek1LU41GDQO0DPWAJtUnVCrR7n37tiROntz6xiXYp9u9e3d3UZloPqKQYbRKeUanVF7VqdSXGYXiGC6RyRXC8sUFW3f2h33BVz8PAXcOF8+cmS4bMVqqDIu+Tvr1AJSbF6Cd+YD18AJ4755P0UGJpyXfjspf++2o7lu3bn370iuMbEfnz1zGJcbU4YE+j3QCN2B2cwYGuGCP7wWIsMjb5ZmZummxsct5PFf47qrmavSljvUPP/zgWmXUfW1jmEIbTXNmHK/VKNUnyHL5IfG+IsWaJSuXRodGJ7dweMHPvygQfvrpp/eOVh+Kq7KYtlm0msMVnPbXCkbztILmHuox8helUFSbn5OzIzY6unmFg9f/phr9nwKqfmGPTVRaOg9VKFiGgJGOeWTQsI1ajviNJhVHVIqybYWFu+Pa8jfAMdiGDVt7SITlc3GxDGNlyrMGFXrRoEIuauSqE5RETsiKSxfsXrupe1uk25O/p9P+cRPS1aO+lCjCB1xX+/gDrbdv07teSU8eKA/2flKeEHkMm/J1fvmiuXA0+GrL5I/DHfE+Qc2MSYu08TFHuWD/Jya+O6h0dwdWJ2fA8D2Bqk/IraK0dO2ClJTljo6OkGzNsnB4Q5tCNmzIHqur8K2zasdXaumiCpKoqMCww2aV+igrltnEew6Wr1q8fMnAyOi09u07NquF4edf/PquX7/+4eHDteF1lbZNNoP2qImhf7Ox3OMKTvvQiFPXZSWllauWrdgeHR39pUO7phUOLVsfbyx19HVyem/d6tXBwqKiWZhKRbEEcVXP0o8NWuqJhkF+own5EUQh2lawb0fimjZUJrCQ2LphazdpQek8XCxHNHLkuEGBXDXI1dd0MuX3pFiMiguL523buLF3Wyv9x46d+bFo+vQ04fBhIml0ZAPRIwhw8BVSro5A7vwFUAT7PcFTE07ik8fnF82f+serfkFNTXu4ebJm6Zx5dHJcncqT99Tk7gpq+XxQ7eYJjHwfgPTqe7t0UAY3LTFx2V/+0pRGYWRr9iA0p9G/nD173K+uyjjFyhHlVgqtqMTRw2al8oRWJKmR7ykQZi9YOi+kT5+WafQl1QcUgx6rrw+ttVnX24y6SrOGuW3mmIcWlr2vw8lr8pLSyuylSzf17t0bmmaaq9GWZPunpNG28Pnnn7+fsyzHT1hUNB1VKgkaR3/W0Ph9HYs/1JLq3xhEdhSXl+8q3LMnIS4urtUeG1SZbN+0vbukpHw6LpKJNFLFcaNM1WBSKK9qZbLvUamYlJaVLNm7a2vftgoJmF4LFs5KKR83UiiM6Nug9PcCON8VkE5Qru4KkODAJ/jg1BPyaRNWZ335ZSDxLL2+0Xv1Ag0KBb9q5YqpWEaqUdrd/xHu0gUYnL4AVhdXoOf7AX1o3B3F4BG6abEDl/GejauayfLSuOrYsUPBh2otEyqMzEEzjdpMuPKEWSk/rhGX18n27JfnL1myOKp/OIyMzQ6vl9IoJNv3J4/0qKswZ1l1XIWJpW+bWPqRiWPuaUnytqysrHrV8uVb+vfvO8rBweF/vC/knwW4jTJr8WLf4gMHJiMyCcpi6M9aCrunw9WNGkz9qw5R1RBS8caCXdsHjmwjvU6YMKHjsmU5Pgd37R+Dl5UL9XLFOatKdd2kVt3kVIofMbmYE5cdXL5z59b+8W2YrfdI9nTaNWNSsuzL4aWKqLCram8PwLq4AZ2zK6AEHkDSu+fj0sGptaUzpmTBJdV/mNScmbUgCR01RiMPD7ur9IF9na4Ad/4MYF6eAAkZcFuWMVq3avCIFZ9//nlSa+4q2JA9fehQcLXNMsNi4IqMHGHQkarDGrX8JCURVYv375WvXrJkeSxUfbRv3yxzak6jzU3dDsfr67vVWkzLKvUavZVlGowU+cjE0g90JH5VJhLWrMrJ2RkWFgbJ9qpp5o2l0X+A9ovmzPEsO1A4GZXJUQbFLmgx/Hc9jt/VY8g1LaKsQWWibSX7dybt2bCh1ZYJ/HdMmTLFVXzw4CSNXEIY1fLzVlR1y4yrb2ow5UVMKdGXi4XZW3du7R87enSrqykgGVXLlyTJRw4TKsPDbnIBwcDgJgCkizsQeQhAQVi/+wdHZlbljh4GBZjNyp03G+lKB4/8Shib/KO6XyjA/H2A2scdSP35QBgecrto5JeaOWnDln/y8ceQbM19sr+n0WPH/nKp/ni3oxbLzAqNptRAUyaWQg+TmOI4qhTXlR3cp1iVvXxZTExUavv27Zv7dC+d2Zpe3HH6WHCdybTYyjBaK0NftjLMLyaa/kVD4lfk5WUVa1bnbIsZGANl4S9Wpf5PZ6NvAO/m5+T7lJeUT8GkajWHEGf0OHVNh6F3dbjqDovJD5Pq8r3lxftSots2W/+lqGh/N0JaulCjFBNmTP6DjVRdt9DodZZQ/ixXSyzF5aVZm3ds7tOWygRuXS+eOS2d/OorKRMVd0Pj1w1g7gIg4vNAUf9eYFdK3LX5sRErWwgw3+wPlp22aJhy6NhjktAoUO7nA8p7BgBpSsy9g6OHmSYlpy7j+QS0TKMvCgTYZ7t08gevI3rLjFpGI7WRjEVHYEdIXHVCpZLWl4mKsHX5a1bFJcSlt3+/KbK1JFtzGm33ww+ng+ospkU2ltVaKOqSlaJ+NZHkHR2GX5IJy4x5q3I2x8bGjm737otB/GviybcFPXr0aJ+fs9lHfFA8CZejchbBzmsw9K6BQh8baPRXLaE8ikmF2+EYrC1/w549ezoWbN/UXV1eNJeVCzm9WnrZRKpvcLT6lgpXNEjUMmNxeWnOzt07oyYvmtxqit61a9dfy6dNS9d+NV7JxiX9Ig/uDop9fUBRTDgoGJ15deGgxDXP7QLwTPhmU+uxHQeD6ZkL8griU6w7+/U7uy0q9MzeMUO5FWOGrfr4449h66K1NNrh/OnTPvVm66QqRiOx4WS9GcOPcYj6iFopqywTFqJ56/PyModnDn0+roJntpcKhJ9//rnjySO1PesqrEsg2awU9bOVpm+bKOo2i6h/kpWWGXNXrt4YGxs7/LkH4Z/a1P0/xF82ZG3wFpeKZ+AKJcmg6gsGhvjdwlEPDCR6m0MUdWpp+Zbt27fELlw4odUiAL6Ta//WDd1kB/ctxcVlHKeWnaYIVQNCqn5R4eoGFaYyyeWiNfu+2x4JV4K9+nmI0NDQv9ILFgxHxowVHoyOPbIzIvyHLSkJxzd/OVI2Ljl+ynOdIiT9myUckpXVsWDBgoBdU2eM3Txx8oqlo0asyAgLm+jq6AgjGyyjm1sfzdVo+3NHjgTWW63TrSwrsZDkISOGfa9VI6cwmbRSWFIs2bBh3aohmUOGdurUCZINpmFItpYm5b+cOXGi7yGbbWUFx+msNH3RxrA3jTR9k0HRnySlJfr81as3JMQljGzX7r0Xhpc/AdmaAJXDu7bu6qYQi+eQKiWqIbALBoq4q6fxBxyO3KaU8mpluXAdJExbqTG5R3LHrXl5PcTFB2ajUokMU8tPY7j6BkHit0kS/wlTK/WycmHO3r27wsa2Lhr4jzkjRnySN3Zs5PaJE2dumjBhzczB6UvD/H1HOX3xSYSDg4P38+fyB7RJIhzafZOf7zR50fIekUOG93Fo3xGyH0aU5mqyOY12hItl6s3mOZVandzCMIcMBH5Og6jPEwrp0fKig+q83NymQfwnnT5pdVx1/eTJD4/U1UUcqrDmVBsM+gqWvWSl6V+MJHWHwfFLwtIy3cqVK9bCfSHvvfdey+U0b2UabQuw8ty2bWOQuKx4GqqQYSyGXNaS6AMtgUEX2W1apaxSlAvz923fHtnWmi+4F25dbm6gsOjgdKVMokIR5VmSwG+wJHGLQdGLpFKpV4pEK/du2xY2alTrW5vgQsNvFi3yHDdzZr/A0FB4P6FloFlcC3t7f8g9hX8pPFvB8AwjCextQaK82PQNo9KFkyd71FmtS6wsS5hp+riRJs9ocOQMJpXUC4sOIutWr87NGDQoo3379pBs8MzWvJ+tCTCNHj9cE1ZbaVln1WktFpa9WMFx180UeZtWqS6JSsrMK1fmrA+NiMhs4UF4YxOEfwLezc/J8ROWFM1ClTKaQdUXORy7ryGwRxoUvUOplFUqsWgttA/C1Q+vfhgC9ukgcUVlJTNVCrkSU6tO0xh6nUOxm4wau0QqlFqlSLwSLkVs4z0S8L7BowyMgvBethTXwuj2ZqvUV9AswIQCPfifL3pkF8+dCjxcUTHbptWiRpI4o0GRKyyGnMdV8kPFBfsV2VnLVyQOHDj4k08+aWnlexHZIGGPHasJra2uyLEatTo9Q1zWk/gvRoq6rsFgGi015uas3hgd3bSXF5LtT5VG20Lfvk7v7di8OVgiLJ2LKxUYjaIXORy/p8WJRxyC3yJVqkqlsHzd/t27o9pKr1CTt3nzumCxqGymWi5RQq8ugyANHIrdYBH0PC5XaGWlwqx927aFtEE6iJbPFhLt7f0BXz592qfGbJhfwXG4hWWP6Qj8ZwZVXUWVstPlZUVE7qrsnIgBEektDDPNsvBnaRSOq2prw6ttplyrQWs0a5gLBpq4rafwOwymviQpKzWuWZW9Ie5lsv3p0mhbgITZtnFjUHlJyXRMqVQzGHZBR5L3dAT1SIMTtyg1Uq0qL8/fuXVrRFtG6YyMvk2kE5UVzlTJJCpCpTrBIujPLIpdpVXqi4RcYZCLRCuhFwPOel/9/J8CMLJd+uEHr6YCgaYpI0meM1LkDxoCPYcp5cdKSwqp9WvXrM0YljHsuUkZptGXVB9wEH/qWH1onc221qbhzAaa+tnE0TdMDHWdw9Hz4tIS0+pV2ZtaVKPNS6D/qaqPNw1YSGzatMlPLBROxVUqREMQF/QUfc9AM79rSfIGpVLZVGLxGnima2vNV5cePTru2LE5WFRWPE0llZYRSlUto0YuMggKI91lWq3WqSSSrD07doS29W6wtxawR3bl7Fm/aqNxjpllCQtNnzISxCUWQc7jSll9aVGBMidnRXZKYuLQL774oqVJ+UUaPQ8dWodrww9XWHOqtFqtmaYvGknyjomhr2sI7JJEWGJYlZ21LioqqmWB8DY2df9PAIuALevWBUqFwtm4SkVzBHFFT9O/6Vn2dw1BNJBqdYVCLN5QXLAvNi2tddLBYiQ3N9e3+ODBr1RicRmuVJ6i1Mg1jiBuakjyJxJBLEqxeF3RgQMxkye33qd76wDXyZ89caJ7vaVinoXjaD1J/WAkyQs6FPkRk0qPlhw8oMpavnxFREQoTKMtfaMtz2zvnj50qHe9xbS6UqMxWUjygoUkb5rhBAFDL0uFJeZV2VkbIp4VCM3bK/9L3+ifHXDN14YNG7oJi4tnYyoVzuL4TzqGuashyQc0it4h1KoalVy6du/eXQPaEmDCM1jWokWCsuLiyWq5XAnTK4PjVzmSvE1j2G0SQQ5hCsWGgwf3R8MXz7364bcKTSuzzp7tXldRscTMsIyepM9qCPw8i6i/x+WSw6UHDyCrsrJWxsbGQpNyq4aXGlADB/E9663mFbDPZiKIy0YMu2MhyRsGHPtZUVpSnZuzcnN4VPhQh5f38jYXCP8SabQtwMozJyfHR1RcPA1TqQiWIC5xBHGPxbEHDIY2kKjKpJaL1x3YsyemLWMObA7v27cPRsupiEwmwpXK4ySC3KRR9B5LEDcpDK1Sy6UbC/bti21r89MfDqjUbbhwgX+4pmaq1WDAORz/nsGw8yyGHUNkkrqSA/tVOSuWZcXExLSUhb9q5Wv/49kT3WsthmUWltabKeqimaJuG3Hyth7Ff1YJRea1OTnbYmMHjH5OtlZ3ffwboP3GvLwAiVA4F1crWYbAr2po6leOIn6jcKSBVCurlBLJJriJ8/luudcARZw78vP9hEUHv1VIJDJcpTpPY9gdlqJ+YyjyGo6qauVi8ZbC/fvj2pK8/2GAka2mpsa7xmabYjMYpAaWhW74Hwm1+hSikFtKDh6QPyNbFFyZ1db6hXehxKimwrzCqmUNJoq4DMlmpumbOpT4UVkmNK/PebEEunlc1bJA+LcCTK+bN28OFpeVzMFVKpIhyQssid9jCPQ+Q6A3aBSpRqTSDbu2bRuQlZXVemMXjtJyc71Liw9ORRUKhETRcwxF3mZo8leKQG9hqLpOrVBs2rdvX2xbi67fOKBi49SPP7pbreZJeo5B9QxzXEtRZygUPaWUSqoOFuyX5q7KXpGcnJD+XPXRGtnaXfj+ZM/6KusKq5YzmBj6iommbhtp8qYGRS+qhOXGdatXb0qIi4Otj1d3ffzbka0ZUPULm8OisrKZqErFUSjSwJH4b1qa/JUj8SuUWmFUCIW5e3bujOjRo0erZzqYXrds2eIvFolmImoVTuDYBYrEb9EUcYcksAYCRyrkcnHTuRCm1zaM0m8Gz17bfdipqso23GDQFelZ5hBHEOdpDD+DyOXVB/ftEy9dvHjJwIHRaZ06dWqWGL2aRv9y7ujRXnVmY5ZNqzGaWeayiWF+NdL0bQ7HfpYLheb1uXmbk+LjR71Sjf5LFwj/A7TPy8sLEotEC3GlQssS6BUdQ/2io/BfYJ+SlMtMstLinJ0bNrRpqoFm623btgVJpeKFKIIwBI78SNPETYoi7lAUfglBlIbycmHO7t07o557Z/+YH/mlE5f+VltlTTHoNDs1HGPVMvQRGkNPq6TSmoK9e0VL5s+fHxLS5K5qXkj4UmQ7V1PT6eyRI/2OVFRkVWk1RgtDXTUx9C9Gmv6VwfBLUqHQlLdq1eb4pCRItpaDeDvZWgDaB3dt3dpNKiqdR6ihRwL9SQMjHY7+wiCqBkIhMypFZSt3bNkQ2taaL3iNgj17esml0oUooiIJAvsBko6k8Zsoqv5ZoZBxQmHp4pycHHgkehEw3iiOHj3qYzUZFnMsTdEEfowh8KOoSnGo8MA+2bw5c+YEBQXFtW/fHrqroFIXVkwt1y90OF5bGV1nsayt1Gp1Npa9aGWZX/Qk8SuHINekZULb6lXZG2Cf7fm7FN42pe5bBTgh2JiXEyAsLZ6NqxUsjHRaEvtFg6N3IelIpdykFotWFezdFRbfu3erZzrYp9u5c2cvhUy2CEURBiexiwSB30FR1e8qley0SFS2NysrC+5/aRZlvFnSHa2rCzKbjTk0RXIYoq5XK+VWUWmpOnfVqpw+ffpAD4JPC7K1lIW/98Px+j6HLZbsCo4zw9aHhaLvWBnmNoegVySlpRV5q1ZtjY6OGtliEP/fXpn1b4y/5OXlBJULSxcQiJqFRxKOwH/ncPQBg6qvk0qFTSkuW/Xdpk1wbtpqek2eMKEjXHStUMiycBw1EAT+E46jv6hUirMlJSXF8+bNG/JcLQKDx5tNrUePVjkbDNpharUyTygU7t+3b9+23NzcJSNHjszs+Gz9QksPQhOg6uNEbW2/wzbLyiqtljaT5A9GHIetjztajLggLxU1pdFXCoTmatROtv8C0CgNm8MykWgOoVITNIZd0OD4XQ2O/c6hyA1CKbfKhOW5O3bsCG9r9gr3FpeWFobL5dLlSqVcrFBINUJhiWzTpk3Zw4cPhxEOPtd/+HbsfwrOnCE67N2712n9+vV9FixYkDB69Oj40NDQCEdHx+ZBfLO7qgnPVB/1obVWa45Vy2nMNH3eQlHXTATRoMOwS4oyoTkvZ/VGOIh/JY3az2z/A8D02lRIlJbOwJVKjMOxi1qC/FVLEPc4DL9OKpVV8nJxXsHevWHx8a2n15kzx36cl5fTbdOm9Rnr16+ZtHDhnHEpKSnJrq6u8AwHI9ybJ1wLwOgDC4Ivnn8ZSJKXzmxnbpz56NShQyF1VdYsi06jN9LURSNF3YJ9Nj2GXlCUlhrzVuZsjB0woOVOXXsa/f9Hh/W5uf6QdIRKRXE4cVlHUvf0JHVPgxM3KDVSoSovX19UsC+xrZ3D8Bq+vr5f9OkT7NGly9+gyheKL7u+ekT6IwA1UpBckPXwDyQJ1E610LPVh9ZYzflmPacxsvR5A03dMlLUbQ2GXFKUllryVq7cGBUVNbTFayRbDuL/sH/YnxmwT7dly5bAcqFwLqZCGBbDLxko+o6BZm5pCfIKpVLVYnL5dyX79ye1sVYC3nv4HOF5D/bxINFgGoZk+8ODACQF/IIvEaRZ7VtfYV1h1rIWHU1cNdDkHSNL3+II7LpUWFq5Jjt7U0xUFHwl0auz0T8sZP+rAOrpcqHUvLh0BqZUE1qKvmhkmFt6kvxdg+E3GDVSiUqlTbPXNkgHAZ8nJBgMLG+vALNpE9Lx4351ZvOSSg2nt7D0ZQNN/g53fmhI/GeFuKwqb1XOzqiopmoUypTeVt/onx3t4cBfXCaeSaEopyXI6waSfKwnyLsaDP+ZVqmtaolkU8F3+xI3tG22frsBx1VnzpzxPWS1zrZwHGuhqMs2mr5lYehbGhy7rBALbWvX5GxLHDgQmpRffcPLHx6u/9UARZy7d+8OgJvRSaXKpsWJW3qS+l2L4Xc5DGtgEbQakyu/Ky4oSPkHke7tBEyjJ48c6VlhNS4xcazGSNGXzBT1i5kkb+pw/JJcJLSuz1+zLSkh4cvnEwS4WMZOtn8yxo4d++7mdauDxUUl8yml2qDDiTt6gnxooOnf9RR1jcOwepVUun3/7t1xbb2r9a3DT/AtMSdP9qi2WVYatZxVS1PXDXA2StF3OAz9SVZWZlm7evW25MTEMe2etT6g6gPu1H3h8rLjn4r2OcuW+cjKyhYxaqRCR5C3jAzzwEQzv+lw/CajRuoRqXT7nm3bErKyWn9X61sDqBw5efJIz5oK6wqTjjPoOapBz9K/aRn6VxbHL0vFIvO6vLytqUlJXz5/d1WzxAiS7Q8w1f574tmar009EZFoBaNGrRocv60jyHt6grynxYg7LIIehqSDerqMNlaFvRWAphmLSbPMpGHNZh13QcdSv7IUcZ/G0ZtScbk1N3fV5sTExDEffvihvan7BwMO6yHp4HpWSqmyalD8Nz1JPTLSzAMDSd3SYFgdLlPsFBUVDc7KyoL91bcH0F115EhtoNWsm6+hCLOOIa+ZdFyDnqVu46jyplhYVrtmzZpt0Dfq8Gxc9YdsnrTjNby3MScvSFIqzKKV6modQd4w0sw9I838roOkQ/ETlEp1sGjv3jT4tpvMzMw//llBD8KRk0d6mAzsShZHbRyJXdex1C96jr7JUfgVmVhYuTYvb3tCQsKradROtrcAcPa6a+vWvmqxeCWjRk2QdDqSeqjBicdanPyFxbB6VKHYWlZUlJifnw9nqC9M7m8cUPVx/Pghv8pK8xyDltVqKeKqnqFu6zjqDkugN6Wiksq83JyN8fHxo9u1ayoQXl1zasdbgNGjR78P3yOhKC9fxqCYVYPhd7U4AfQk9UBHEA0MhlUhUunmogMHkmfNmgVHl3/MefvkyZNutVUVE4x6jUynYc8YNewVg4ZtYEjskqS8tC43Z+X2kPDwoS3eg9DyDS9/zK/EjlYBX0gHX4WuKpdkMQhaocHwOzqSeqAliN84DLtGKJRmiVCYlZ29HDbo4TN888+v2mbrYzYZtuo0XIWGoS9paPIWS2LXJOVlFXmrcrYOGNDkrmq55vTf2oPwtgNq5HauX99LJRYvpRDExmLYrzSCPKDU6vuYXH5WIhLtXb58OVRwN69ge7OkM5vNwUa9fpWGY3QsRfxMIKobUnFZ/br8vJ0txJMt3VX2NPqWw9XB4V34Zmu5SLQcUyr1uEp5iVSrf0VkstNFBQX7p02eDA3sMK3CAf6bDR41NTWf6DkugcSxfEQpI8tLi+mNa/O3DRo0CBYIzTt1/7DV9Hb8/wG+MQeSTlhSMkshFZcpJRJ9SWGhfG1u7rKUhITY5wLMNz/v1ul07Q7u2PHF5s2b+63Ozs6cOmnSyNjYASmdO3du6Ru1Fwh/QkT4+n6Qk5Pjt2nTurTVOTnjpkyaNCY2NjbBtWtX6L6Dfbk/5hz3HDC8wrwOiwJoBYQOLXhms4+r/tx4t0uXLlA9Ap8nXH8L/zi+DQLMZqEeZD0U6EHBXvNa9T/sS9nxvwZ8drDv1vxcoRwdPlv4rN9sOm0FLQWYdpXuvxbg82wWYNqfrR122GGHHXbYYYcddthhhx122GGHHXbYYYcddthhhx122GGHHXbYYYcddthhhx122GGHHXb8y+L/Abk//ln9+mnJAAAAAElFTkSuQmCC';
+
+  const STATUS_CYCLE = ['', 'A', 'H', 'L'];
+  const STATUS_LABEL = {'':'Present','A':'Absent','H':'Half Day','L':'Leave (Paid)'};
+
+  /* ============ STATE ============ */
+  const state = {
+    view: 'dashboard',
+    month: new Date().toISOString().slice(0,7),
+    companyName: 'PrismBeamz',
+    employees: [],
+    role: 'user',
+    showAddForm: false,
+    attendance: {},
+    adjustments: {},
+    payslipEmpId: null,
+    ready: false,
+  };
+
+  /* ============ STORAGE ============ */
+  async function safeGet(key){
+    try{ const r = await window.storage.get(key); return r ? r.value : null; }
+    catch(e){ return null; }
+  }
+  async function safeSet(key, value){
+    try{ await window.storage.set(key, value); }catch(e){ console.error('storage set failed', key, e); }
+  }
+
+  async function loadMonth(month){
+    const [att, adj] = await Promise.all([
+      safeGet('attendance:'+month),
+      safeGet('adjustments:'+month),
+    ]);
+    state.attendance = att ? JSON.parse(att) : {};
+    state.adjustments = adj ? JSON.parse(adj) : {};
+  }
+
+  async function persistAttendance(){ await safeSet('attendance:'+state.month, JSON.stringify(state.attendance)); }
+  async function persistAdjustments(){ await safeSet('adjustments:'+state.month, JSON.stringify(state.adjustments)); }
+
+  async function loadEmployees(){
+    const raw = await safeGet('employees');
+    if(raw){
+      try{ state.employees = JSON.parse(raw); return; }catch(e){ /* fall through to seed */ }
+    }
+    state.employees = SEED_EMPLOYEES.slice();
+    await safeSet('employees', JSON.stringify(state.employees));
+  }
+  async function persistEmployees(){ await safeSet('employees', JSON.stringify(state.employees)); }
+
+  function nextEmployeeId(){
+    let max = 0;
+    state.employees.forEach(e => {
+      const m = /^EMP-(\d+)$/.exec(e.id);
+      if(m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return 'EMP-' + String(max + 1).padStart(3, '0');
+  }
+
+  async function init(){
+    const co = await safeGet('company-name');
+    if(co) state.companyName = co;
+    const role = await safeGet('role-preference');
+    if(role === 'admin' || role === 'user') state.role = role;
+    await loadEmployees();
+    await loadMonth(state.month);
+    state.ready = true;
+    render();
+  }
+
+  /* ============ HELPERS ============ */
+  function daysInMonth(month){ const [y,m] = month.split('-').map(Number); return new Date(y, m, 0).getDate(); }
+  function isSunday(month, day){ const [y,m] = month.split('-').map(Number); return new Date(y, m-1, day).getDay() === 0; }
+  function weekdayLetter(month, day){ const [y,m] = month.split('-').map(Number); return ['S','M','T','W','T','F','S'][new Date(y,m-1,day).getDay()]; }
+  function fmtINR(n){ return '\u20b9' + Math.round(n).toLocaleString('en-IN'); }
+  function fmtMonthLabel(month){
+    const [y,m] = month.split('-').map(Number);
+    return new Date(y, m-1, 1).toLocaleString('en-IN', {month:'long', year:'numeric'});
+  }
+  function activeEmployees(){ return state.employees.filter(e => e.status === 'Active'); }
+
+  function attendanceSummary(empId, month){
+    const dim = daysInMonth(month);
+    let workingDays=0, present=0, absent=0, half=0, leave=0, lop=0;
+    const rec = state.attendance[empId] || {};
+    for(let d=1; d<=dim; d++){
+      if(isSunday(month, d)) continue;
+      workingDays++;
+      const s = rec[d] || '';
+      if(s==='A'){ absent++; lop += 1; }
+      else if(s==='H'){ half++; lop += 0.5; }
+      else if(s==='L'){ leave++; }
+      else { present++; }
+    }
+    return {workingDays, present, absent, half, leave, lop};
+  }
+
+  function professionalTax(monthlyGross){
+    if(monthlyGross<=21000) return 0;
+    if(monthlyGross<=30000) return 135;
+    if(monthlyGross<=45000) return 315;
+    if(monthlyGross<=60000) return 690;
+    if(monthlyGross<=75000) return 1025;
+    return 1250;
+  }
+
+  function computePayroll(emp, month){
+    const summary = attendanceSummary(emp.id, month);
+    const monthlyGross = emp.ctc / 12;
+    const basic = monthlyGross * 0.5;
+    const hra = basic * 0.4;
+    const special = monthlyGross - basic - hra;
+    const frac = summary.workingDays > 0 ? Math.max(0, (summary.workingDays - summary.lop) / summary.workingDays) : 1;
+    const earnedGross = monthlyGross * frac;
+    const earnedBasic = basic * frac;
+    const earnedHra = hra * frac;
+    const earnedSpecial = special * frac;
+    const pf = earnedBasic * 0.12;
+    const esi = monthlyGross <= 21000 ? earnedGross * 0.0075 : 0;
+    const pt = professionalTax(monthlyGross);
+    const adj = state.adjustments[emp.id] || {bonus:0, otherDeduction:0, remarks:''};
+    const bonus = Number(adj.bonus) || 0;
+    const otherDeduction = Number(adj.otherDeduction) || 0;
+    const totalDeductions = pf + esi + pt + otherDeduction;
+    const netPay = earnedGross + bonus - totalDeductions;
+    return {summary, monthlyGross, basic, hra, special, earnedGross, earnedBasic, earnedHra, earnedSpecial, pf, esi, pt, bonus, otherDeduction, totalDeductions, netPay};
+  }
+
+  /* ============ EVENT HANDLERS ============ */
+  window._app = {
+    setView(v){ state.view = v; state.payslipEmpId = null; render(); },
+    async setMonth(v){ state.month = v; await loadMonth(v); render(); },
+    async setCompanyName(v){ state.companyName = v; await safeSet('company-name', v); render(); },
+    async cycleDay(empId, day){
+      if(!state.attendance[empId]) state.attendance[empId] = {};
+      const cur = state.attendance[empId][day] || '';
+      const idx = STATUS_CYCLE.indexOf(cur);
+      const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+      if(next === '') delete state.attendance[empId][day];
+      else state.attendance[empId][day] = next;
+      await persistAttendance();
+      render();
+    },
+    async setAdj(empId, field, value){
+      if(!state.adjustments[empId]) state.adjustments[empId] = {bonus:0, otherDeduction:0, remarks:''};
+      state.adjustments[empId][field] = field === 'remarks' ? value : (Number(value) || 0);
+      await persistAdjustments();
+      render();
+    },
+    openPayslip(empId){ state.payslipEmpId = empId; render(); },
+    closePayslip(){ state.payslipEmpId = null; render(); },
+    printPayslip(){ window.print(); },
+    async setRole(v){
+      state.role = v;
+      state.showAddForm = false;
+      await safeSet('role-preference', v);
+      render();
+    },
+    toggleAddForm(){ state.showAddForm = !state.showAddForm; render(); },
+    async addEmployee(evt){
+      evt.preventDefault();
+      if(state.role !== 'admin') return;
+      const f = evt.target;
+      const emp = {
+        id: nextEmployeeId(),
+        name: f.name.value.trim(),
+        gender: f.gender.value,
+        dob: f.dob.value,
+        doj: f.doj.value,
+        designation: f.designation.value.trim(),
+        department: f.department.value.trim(),
+        manager: f.manager.value.trim(),
+        email: f.email.value.trim(),
+        mobile: f.mobile.value.trim(),
+        pan: f.pan.value.trim(),
+        uan: f.uan.value.trim(),
+        bank: f.bank.value.trim(),
+        ifsc: f.ifsc.value.trim(),
+        ctc: Number(f.ctc.value) || 0,
+        status: f.status.value,
+      };
+      state.employees.push(emp);
+      await persistEmployees();
+      state.showAddForm = false;
+      render();
+    },
+    async deleteEmployee(empId){
+      if(state.role !== 'admin') return;
+      const emp = state.employees.find(x => x.id === empId);
+      if(!emp) return;
+      if(!window.confirm('Remove ' + emp.name + ' (' + empId + ') from the employee record? This cannot be undone.')) return;
+      state.employees = state.employees.filter(x => x.id !== empId);
+      await persistEmployees();
+      render();
+    },
+  };
+
+  /* ============ RENDER: SUBVIEWS ============ */
+
+  function renderSidebar(){
+    const items = [
+      {k:'dashboard', label:'Dashboard', g:'\u25a4'},
+      {k:'employees', label:'Employees', g:'\u2630'},
+      {k:'attendance', label:'Attendance Register', g:'\u2637'},
+      {k:'payroll', label:'Payroll', g:'\u20b9'},
+    ];
+    return `
+      <div class="sidebar">
+        <div class="brand">
+          <div class="mark">${escapeHtml(state.companyName)}</div>
+          <div class="sub">Attendance &amp; Payroll Register</div>
+        </div>
+        ${items.map(it => `
+          <div class="nav-item ${state.view===it.k?'active':''}" onclick="_app.setView('${it.k}')">
+            <span class="nav-glyph">${it.g}</span>${it.label}
+          </div>
+        `).join('')}
+        <div class="sidebar-foot">Working model &mdash; demo data.<br/>Admin role can add or remove employees. Statutory figures are illustrative.</div>
+      </div>
+    `;
+  }
+
+  function renderTopbar(){
+    const titles = {
+      dashboard: ['Dashboard', 'Overview for the selected period'],
+      employees: ['Employee Master', 'Read-only record sourced from the employee database'],
+      attendance: ['Attendance Register', 'Click a working day to cycle Present \u2192 Absent \u2192 Half Day \u2192 Leave'],
+      payroll: ['Payroll', 'Computed from attendance, CTC structure and simplified statutory rules'],
+    };
+    const [t, s] = titles[state.view] || ['', ''];
+    const showMonth = state.view !== 'employees';
+    return `
+      <div class="topbar">
+        <div>
+          <h1>${t}</h1>
+          <div class="tag">${s}</div>
+        </div>
+        <div class="controls">
+          ${state.view==='dashboard' ? `<input class="co-input" style="width:220px" value="${escapeHtml(state.companyName)}" onchange="_app.setCompanyName(this.value)" title="Company name" />` : ''}
+          ${showMonth ? `<input class="month-input" type="month" value="${state.month}" onchange="_app.setMonth(this.value)" />` : ''}
+          <div class="role-switch">
+            <span class="role-label">Signed in as</span>
+            <select onchange="_app.setRole(this.value)">
+              <option value="user" ${state.role==='user'?'selected':''}>User</option>
+              <option value="admin" ${state.role==='admin'?'selected':''}>Admin</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDashboard(){
+    const emps = activeEmployees();
+    const summaries = emps.map(e => ({emp:e, pay: computePayroll(e, state.month)}));
+    const totalCost = summaries.reduce((a,s)=>a+s.pay.netPay, 0);
+    const avgAttendance = summaries.length ? summaries.reduce((a,s)=>{
+      const wd = s.pay.summary.workingDays || 1;
+      return a + ((wd - s.pay.summary.lop)/wd);
+    },0)/summaries.length*100 : 0;
+    const totalLop = summaries.reduce((a,s)=>a+s.pay.summary.lop,0);
+    const byDept = {};
+    emps.forEach(e => { byDept[e.department] = (byDept[e.department]||0)+1; });
+
+    return `
+      <div class="grid-cards">
+        <div class="card">
+          <div class="num">${emps.length}</div>
+          <div class="label">Active employees (of ${state.employees.length} total)</div>
+        </div>
+        <div class="card leaf">
+          <div class="num">${avgAttendance.toFixed(1)}%</div>
+          <div class="label">Average attendance &mdash; ${fmtMonthLabel(state.month)}</div>
+        </div>
+        <div class="card rust">
+          <div class="num">${totalLop}</div>
+          <div class="label">Total loss-of-pay days this month</div>
+        </div>
+        <div class="card slate">
+          <div class="num" style="font-size:22px;">${fmtINR(totalCost)}</div>
+          <div class="label">Estimated net payroll payout</div>
+        </div>
+      </div>
+
+      <div class="section-title">Headcount by department</div>
+      <table class="ledger">
+        <thead><tr><th>Department</th><th>Active headcount</th></tr></thead>
+        <tbody>
+          ${Object.entries(byDept).map(([d,c]) => `<tr><td>${escapeHtml(d)}</td><td class="mono">${c}</td></tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="section-title">Attendance snapshot &mdash; ${fmtMonthLabel(state.month)}</div>
+      <table class="ledger">
+        <thead><tr><th>Employee</th><th>Present</th><th>Absent</th><th>Half day</th><th>Leave</th><th>LOP days</th></tr></thead>
+        <tbody>
+          ${summaries.map(s => `
+            <tr>
+              <td>${escapeHtml(s.emp.name)}</td>
+              <td class="mono">${s.pay.summary.present}</td>
+              <td class="mono">${s.pay.summary.absent}</td>
+              <td class="mono">${s.pay.summary.half}</td>
+              <td class="mono">${s.pay.summary.leave}</td>
+              <td class="mono">${s.pay.summary.lop}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderEmployees(){
+    const isAdmin = state.role === 'admin';
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+        <div class="tag" style="font-size:12px; color:var(--muted);">
+          ${state.employees.length} employees on record &middot; ${activeEmployees().length} active
+        </div>
+        ${isAdmin
+          ? `<button class="btn" onclick="_app.toggleAddForm()">${state.showAddForm ? 'Cancel' : '+ Add Employee'}</button>`
+          : `<div class="tag" style="font-size:12px; color:var(--muted);">Signed in as User &mdash; switch to Admin to add or remove employees</div>`
+        }
+      </div>
+      ${isAdmin && state.showAddForm ? renderAddEmployeeForm() : ''}
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th>Emp ID</th><th>Name</th><th>Designation</th><th>Department</th><th>Manager</th>
+            <th>DOJ</th><th>Email</th><th>Mobile</th><th>CTC (Annual)</th><th>Status</th>${isAdmin ? '<th></th>' : ''}
+          </tr>
+        </thead>
+        <tbody>
+          ${state.employees.map(e => `
+            <tr>
+              <td class="mono">${e.id}</td>
+              <td>${escapeHtml(e.name)}</td>
+              <td>${escapeHtml(e.designation)}</td>
+              <td>${escapeHtml(e.department)}</td>
+              <td>${escapeHtml(e.manager)}</td>
+              <td class="mono">${e.doj}</td>
+              <td class="mono">${e.email}</td>
+              <td class="mono">${e.mobile}</td>
+              <td class="num-cell">${fmtINR(e.ctc)}</td>
+              <td><span class="status-pill ${e.status==='Active'?'pill-active':'pill-resigned'}">${e.status}</span></td>
+              ${isAdmin ? `<td><button class="link-btn" style="color:var(--rust)" onclick="_app.deleteEmployee('${e.id}')">Remove</button></td>` : ''}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderAddEmployeeForm(){
+    return `
+      <form class="add-emp-form" onsubmit="_app.addEmployee(event)">
+        <div class="section-title" style="margin-top:0;">New employee</div>
+        <div class="form-grid">
+          <label>Full name<input name="name" required /></label>
+          <label>Gender
+            <select name="gender"><option value="M">M</option><option value="F">F</option><option value="Other">Other</option></select>
+          </label>
+          <label>Date of birth<input name="dob" type="date" required /></label>
+          <label>Date of joining<input name="doj" type="date" required /></label>
+          <label>Designation<input name="designation" required /></label>
+          <label>Department<input name="department" required /></label>
+          <label>Reporting manager<input name="manager" /></label>
+          <label>Email<input name="email" type="email" required /></label>
+          <label>Mobile<input name="mobile" required /></label>
+          <label>PAN<input name="pan" /></label>
+          <label>UAN<input name="uan" /></label>
+          <label>Bank A/C<input name="bank" /></label>
+          <label>IFSC<input name="ifsc" /></label>
+          <label>CTC (Annual, \u20b9)<input name="ctc" type="number" min="0" required /></label>
+          <label>Status
+            <select name="status"><option value="Active">Active</option><option value="Resigned">Resigned</option><option value="Inactive">Inactive</option></select>
+          </label>
+        </div>
+        <div class="close-row" style="margin-top:14px;">
+          <button type="submit" class="btn">Save employee</button>
+        </div>
+      </form>
+    `;
+  }
+
+  function renderAttendance(){
+    const dim = daysInMonth(state.month);
+    const emps = activeEmployees();
+    const dayHeaders = [];
+    for(let d=1; d<=dim; d++) dayHeaders.push(d);
+
+    const headRow1 = `<tr>
+      <th class="emp-col" rowspan="2">Employee</th>
+      ${dayHeaders.map(d => `<th ${isSunday(state.month,d)?'style="background:var(--navy-light)"':''}>${d}</th>`).join('')}
+      <th colspan="5">Summary</th>
+    </tr>`;
+    const headRow2 = `<tr>
+      ${dayHeaders.map(d => `<th style="font-size:9px; ${isSunday(state.month,d)?'background:var(--navy-light)':''}">${weekdayLetter(state.month,d)}</th>`).join('')}
+      <th style="font-size:9.5px;">P</th><th style="font-size:9.5px;">A</th><th style="font-size:9.5px;">H</th><th style="font-size:9.5px;">L</th><th style="font-size:9.5px;">LOP</th>
+    </tr>`;
+
+    const bodyRows = emps.map(e => {
+      const rec = state.attendance[e.id] || {};
+      const cells = dayHeaders.map(d => {
+        if(isSunday(state.month, d)){
+          return `<td class="day-cell sun">WO</td>`;
+        }
+        const s = rec[d] || '';
+        const cls = s ? s : 'present';
+        const label = s || 'P';
+        return `<td class="day-cell ${cls}" onclick="_app.cycleDay('${e.id}', ${d})" title="${STATUS_LABEL[s]}">${label}</td>`;
+      }).join('');
+      const sum = attendanceSummary(e.id, state.month);
+      return `<tr>
+        <td class="emp-col">${escapeHtml(e.name)}<br/><span class="mono" style="color:var(--muted); font-size:10.5px;">${e.id}</span></td>
+        ${cells}
+        <td class="sum-col">${sum.present}</td>
+        <td class="sum-col">${sum.absent}</td>
+        <td class="sum-col">${sum.half}</td>
+        <td class="sum-col">${sum.leave}</td>
+        <td class="sum-col">${sum.lop}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div class="att-wrap">
+        <table class="att-table">
+          <thead>${headRow1}${headRow2}</thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background:#fff;border:1px solid var(--line)"></span>Present</span>
+        <span><span class="swatch" style="background:var(--rust-soft)"></span>Absent</span>
+        <span><span class="swatch" style="background:var(--amber-soft)"></span>Half day</span>
+        <span><span class="swatch" style="background:var(--slate-soft)"></span>Leave (paid)</span>
+        <span><span class="swatch" style="background:var(--paper-deep)"></span>Weekly off (Sunday)</span>
+      </div>
+    `;
+  }
+
+  function renderPayroll(){
+    const emps = activeEmployees();
+    const rows = emps.map(e => {
+      const p = computePayroll(e, state.month);
+      const adj = state.adjustments[e.id] || {bonus:0, otherDeduction:0};
+      return `
+        <tr>
+          <td>${escapeHtml(e.name)}<br/><span class="mono" style="color:var(--muted); font-size:10.5px;">${e.id}</span></td>
+          <td class="num-cell">${fmtINR(p.monthlyGross)}</td>
+          <td class="num-cell">${p.summary.lop}</td>
+          <td class="num-cell">${fmtINR(p.earnedGross)}</td>
+          <td class="num-cell">${fmtINR(p.pf)}</td>
+          <td class="num-cell">${fmtINR(p.esi)}</td>
+          <td class="num-cell">${fmtINR(p.pt)}</td>
+          <td><input class="adj-input" type="number" min="0" value="${adj.bonus||0}" onchange="_app.setAdj('${e.id}','bonus',this.value)" /></td>
+          <td><input class="adj-input" type="number" min="0" value="${adj.otherDeduction||0}" onchange="_app.setAdj('${e.id}','otherDeduction',this.value)" /></td>
+          <td class="num-cell net-pos">${fmtINR(p.netPay)}</td>
+          <td><button class="link-btn" onclick="_app.openPayslip('${e.id}')">Payslip</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    const totalNet = emps.reduce((a,e)=>a+computePayroll(e,state.month).netPay, 0);
+
+    return `
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th>Employee</th><th>Monthly Gross</th><th>LOP days</th><th>Earned Gross</th>
+            <th>PF</th><th>ESI</th><th>Prof. Tax</th><th>Bonus</th><th>Other Ded.</th><th>Net Pay</th><th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="9" style="text-align:right; font-weight:600; padding:9px 10px;">Total net payout</td>
+            <td class="num-cell" style="font-weight:700;">${fmtINR(totalNet)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="note">
+        Illustrative calculation for demo purposes: Basic = 50% of monthly gross, HRA = 40% of Basic, remainder as Special Allowance.
+        PF = 12% of earned Basic. ESI = 0.75% of earned gross when monthly gross \u2264 \u20b921,000. Professional Tax follows a simplified
+        slab. Loss-of-pay is charged per working day (Sundays treated as weekly off). This is not statutory or tax advice.
+      </div>
+    `;
+  }
+
+  function renderPayslip(){
+    if(!state.payslipEmpId) return '';
+    const e = state.employees.find(x => x.id === state.payslipEmpId);
+    if(!e) return '';
+    const p = computePayroll(e, state.month);
+    return `
+      <div class="payslip-overlay" onclick="if(event.target===this) _app.closePayslip()">
+        <div class="payslip">
+          <div class="close-row no-print">
+            <button class="btn ghost" onclick="_app.printPayslip()">Print</button>
+            <button class="btn" onclick="_app.closePayslip()">Close</button>
+          </div>
+          <div class="payslip-head">
+            <div style="display:flex; align-items:center; gap:14px;">
+              <img src="${LOGO_DATA_URL}" alt="${escapeHtml(state.companyName)} logo" style="width:44px; height:44px; object-fit:contain;" />
+              <div>
+                <h2>${escapeHtml(state.companyName)}</h2>
+                <div class="period">Payslip for ${fmtMonthLabel(state.month)}</div>
+              </div>
+            </div>
+            <div class="mono" style="text-align:right; font-size:12px; color:var(--muted);">${e.id}</div>
+          </div>
+          <div class="payslip-grid">
+            <div><span class="k">Employee:</span> ${escapeHtml(e.name)}</div>
+            <div><span class="k">Designation:</span> ${escapeHtml(e.designation)}</div>
+            <div><span class="k">Department:</span> ${escapeHtml(e.department)}</div>
+            <div><span class="k">Date of joining:</span> ${e.doj}</div>
+            <div><span class="k">Bank A/C:</span> ${e.bank}</div>
+            <div><span class="k">PAN:</span> ${e.pan}</div>
+            <div><span class="k">Working days:</span> ${p.summary.workingDays}</div>
+            <div><span class="k">LOP days:</span> ${p.summary.lop}</div>
+          </div>
+          <div class="pay-cols">
+            <div>
+              <h3>Earnings</h3>
+              <div class="pay-row"><span>Basic</span><span class="mono">${fmtINR(p.earnedBasic)}</span></div>
+              <div class="pay-row"><span>HRA</span><span class="mono">${fmtINR(p.earnedHra)}</span></div>
+              <div class="pay-row"><span>Special allowance</span><span class="mono">${fmtINR(p.earnedSpecial)}</span></div>
+              <div class="pay-row"><span>Bonus / incentive</span><span class="mono">${fmtINR(p.bonus)}</span></div>
+              <div class="pay-row total"><span>Gross earnings</span><span class="mono">${fmtINR(p.earnedGross + p.bonus)}</span></div>
+            </div>
+            <div>
+              <h3>Deductions</h3>
+              <div class="pay-row"><span>Provident Fund</span><span class="mono">${fmtINR(p.pf)}</span></div>
+              <div class="pay-row"><span>ESI</span><span class="mono">${fmtINR(p.esi)}</span></div>
+              <div class="pay-row"><span>Professional tax</span><span class="mono">${fmtINR(p.pt)}</span></div>
+              <div class="pay-row"><span>Other deductions</span><span class="mono">${fmtINR(p.otherDeduction)}</span></div>
+              <div class="pay-row total"><span>Total deductions</span><span class="mono">${fmtINR(p.totalDeductions)}</span></div>
+            </div>
+          </div>
+          <div class="net-box">
+            <div>Net pay for ${fmtMonthLabel(state.month)}</div>
+            <div class="big">${fmtINR(p.netPay)}</div>
+          </div>
+          <div class="note">Computer-generated demo payslip. Figures are illustrative and simplified; not for statutory filing or actual disbursement.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  /* ============ RENDER: ROOT ============ */
+  function render(){
+    const app = document.getElementById('app');
+    if(!state.ready){
+      app.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;width:100%;color:var(--muted);font-family:Georgia,serif;">Loading register\u2026</div>`;
+      return;
+    }
+    let body = '';
+    if(state.view === 'dashboard') body = renderDashboard();
+    else if(state.view === 'employees') body = renderEmployees();
+    else if(state.view === 'attendance') body = renderAttendance();
+    else if(state.view === 'payroll') body = renderPayroll();
+
+    app.innerHTML = `
+      ${renderSidebar()}
+      <div class="main">
+        ${renderTopbar()}
+        <div class="content">${body}</div>
+      </div>
+      ${renderPayslip()}
+    `;
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
