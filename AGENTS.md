@@ -77,6 +77,7 @@ Before reporting a step as done, `npm run typecheck`, `npm test`, `flutter analy
 ## Backend conventions
 
 - Layers: `routes/` (HTTP only: parse, validate, call service, respond) → `services/` (Firebase access, transactions) → `domain/` (pure logic).
+- All API response timestamps use ISO 8601 strings and responses containing Firestore data must pass through `backend/src/services/serialize.ts`.
 - Validate every request body, query and param with zod in `middleware/validate`.
 - Errors: throw an `AppError(status, code, message, details?)`. The error middleware responds with:
   ```json

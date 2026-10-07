@@ -3,6 +3,7 @@ import type { IdTokenVerifier } from '../middleware/auth';
 import { createAuthMiddleware, requireRole } from '../middleware/auth';
 import { AppError } from '../errors/app-error';
 import type { UserProfile } from '../services/profile';
+import { serialize } from '../services/serialize';
 
 export interface MeRouteDependencies {
   verifyIdToken: IdTokenVerifier;
@@ -33,7 +34,7 @@ export function createMeRouter(dependencies: MeRouteDependencies) {
         throw new AppError(403, 'ROLE_MISMATCH', 'The account role does not match its ID token.');
       }
 
-      res.json({ ...profile, uid: user.uid });
+      res.json(serialize({ ...profile, uid: user.uid }));
     },
   );
 
