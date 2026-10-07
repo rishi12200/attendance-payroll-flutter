@@ -6,9 +6,12 @@ import { EmployeeService } from './services/employee-service';
 import { FirestoreEmployeeStore } from './services/firestore-employee-store';
 import { BranchService } from './services/branch-service';
 import { FirestoreBranchStore } from './services/firestore-branch-store';
+import { AttendanceService } from './services/attendance-service';
+import { FirestoreAttendanceStore } from './services/firestore-attendance-store';
 
 const employeeStore = new FirestoreEmployeeStore(db);
 const branchStore = new FirestoreBranchStore(db);
+const attendanceStore = new FirestoreAttendanceStore(db);
 const app = createApp({
   verifyIdToken: (token, checkRevoked) => auth.verifyIdToken(token, checkRevoked),
   getProfile: getUserProfile,
@@ -18,6 +21,11 @@ const app = createApp({
     branches: branchStore,
   }),
   branches: new BranchService(branchStore, employeeStore),
+  attendance: new AttendanceService({
+    store: attendanceStore,
+    employees: employeeStore,
+    branches: branchStore,
+  }),
 });
 
 app.listen(env.PORT, () => {

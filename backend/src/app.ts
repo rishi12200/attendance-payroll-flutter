@@ -6,11 +6,13 @@ import { AppError } from './errors/app-error';
 import { errorHandler } from './middleware/error-handler';
 import { createEmployeesRouter, type EmployeeOperations } from './routes/employees';
 import { createBranchesRouter, type BranchOperations } from './routes/branches';
+import { createAttendanceRouter, type AttendanceOperations } from './routes/attendance';
 
 export function createApp(
   dependencies: MeRouteDependencies & {
     employees?: EmployeeOperations;
     branches?: BranchOperations;
+    attendance?: AttendanceOperations;
   },
 ) {
   const app = express();
@@ -35,6 +37,15 @@ export function createApp(
       createBranchesRouter({
         verifyIdToken: dependencies.verifyIdToken,
         branches: dependencies.branches,
+      }),
+    );
+  }
+  if (dependencies.attendance) {
+    app.use(
+      '/attendance',
+      createAttendanceRouter({
+        verifyIdToken: dependencies.verifyIdToken,
+        attendance: dependencies.attendance,
       }),
     );
   }
