@@ -132,7 +132,6 @@ Future<_FakeLocationService> _pumpScreen(
         ),
         attendanceRepositoryProvider.overrideWithValue(repository),
         installIdStoreProvider.overrideWithValue(_FakeInstallIdStore()),
-        attendanceClockProvider.overrideWithValue(() => DateTime(2026, 10)),
         employeeBranchesProvider.overrideWith((ref) async => branches),
         locationServiceProvider.overrideWithValue(locationService),
       ],

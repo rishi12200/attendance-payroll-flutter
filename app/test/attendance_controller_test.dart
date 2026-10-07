@@ -117,13 +117,11 @@ MonthAttendance _month({
 ProviderContainer _container({
   required _FakeRepository repository,
   required _FakeLocationService location,
-  required DateTime Function() clock,
 }) => ProviderContainer(
   overrides: [
     attendanceRepositoryProvider.overrideWithValue(repository),
     locationServiceProvider.overrideWithValue(location),
     installIdStoreProvider.overrideWithValue(_FakeInstallIdStore()),
-    attendanceClockProvider.overrideWithValue(clock),
     employeeBranchesProvider.overrideWith((ref) async => [_branch]),
   ],
 );
@@ -144,7 +142,6 @@ void main() {
     final container = _container(
       repository: repository,
       location: _FakeLocationService(_position),
-      clock: () => DateTime(2035, 1, 1),
     );
     addTearDown(container.dispose);
 
@@ -152,7 +149,7 @@ void main() {
     final state = container.read(attendanceControllerProvider);
     expect(state, isA<AttendanceNotCheckedIn>());
     expect((state as AttendanceNotCheckedIn).today, '2026-10-07');
-    expect(repository.requests, ['2035-01', '2026-10']);
+    expect(repository.requests, ['2000-01', '2026-10']);
   });
 
   test('restores open and completed server attendance states', () async {
@@ -170,7 +167,6 @@ void main() {
     final openContainer = _container(
       repository: openRepository,
       location: _FakeLocationService(_position),
-      clock: () => DateTime(2026, 10),
     );
     addTearDown(openContainer.dispose);
     await _settleInitialLoad(openContainer);
@@ -195,7 +191,6 @@ void main() {
         ),
       ]),
       location: _FakeLocationService(_position),
-      clock: () => DateTime(2026, 10),
     );
     addTearDown(completedContainer.dispose);
     await _settleInitialLoad(completedContainer);
@@ -207,6 +202,10 @@ void main() {
 
   test('loads the prior month on server month boundary and checks out yesterday', () async {
     final repository = _FakeRepository([
+      _month(
+        today: '2026-10-01',
+        serverTime: '2026-10-01T01:00:00.000Z',
+      ),
       _month(
         today: '2026-10-01',
         serverTime: '2026-10-01T01:00:00.000Z',
@@ -245,12 +244,11 @@ void main() {
     final container = _container(
       repository: repository,
       location: _FakeLocationService(_position),
-      clock: () => DateTime(2026, 10),
     );
     addTearDown(container.dispose);
     await _settleInitialLoad(container);
 
-    expect(repository.requests, ['2026-10', '2026-09']);
+    expect(repository.requests, ['2000-01', '2026-10', '2026-09']);
     expect(container.read(attendanceControllerProvider), isA<AttendanceCheckedIn>());
     await container.read(attendanceControllerProvider.notifier).checkOut();
     expect(repository.payloads.single['deviceId'], 'stable-install-id');
@@ -262,6 +260,7 @@ void main() {
 
   test('check-in sends only current location, device id, and mocked flag', () async {
     final repository = _FakeRepository([
+      _month(),
       _month(),
       _month(
         days: {
@@ -283,7 +282,6 @@ void main() {
           isMocked: true,
         ),
       ),
-      clock: () => DateTime(2026, 10),
     );
     addTearDown(container.dispose);
     await _settleInitialLoad(container);
@@ -305,7 +303,6 @@ void main() {
     final container = _container(
       repository: _FakeRepository([_month()]),
       location: location,
-      clock: () => DateTime(2026, 10),
     );
     addTearDown(container.dispose);
     await _settleInitialLoad(container);
@@ -330,13 +327,12 @@ void main() {
     final container = _container(
       repository: repository,
       location: _FakeLocationService(_position),
-      clock: () => DateTime(2026, 10),
     );
     addTearDown(container.dispose);
     await _settleInitialLoad(container);
     await container.read(attendanceControllerProvider.notifier).checkIn();
 
-    expect(repository.requests.length, 2);
+    expect(repository.requests.length, 3);
     expect(container.read(attendanceControllerProvider), isA<AttendanceNotCheckedIn>());
     expect(
       container.read(attendanceControllerProvider).feedback,
@@ -350,7 +346,6 @@ void main() {
       final container = _container(
         repository: _FakeRepository([_month()]),
         location: location,
-        clock: () => DateTime(2026, 10),
       );
       await _settleInitialLoad(container);
       await container.read(attendanceControllerProvider.notifier).checkIn();

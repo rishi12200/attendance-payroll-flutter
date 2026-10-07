@@ -12,14 +12,12 @@ import '../data/install_id_store.dart';
 import 'attendance.dart';
 import 'attendance_helpers.dart';
 
-final attendanceClockProvider = Provider<DateTime Function()>(
-  (ref) => DateTime.now,
-);
-
 final employeeBranchesProvider = FutureProvider(
   (ref) => ref.watch(branchRepositoryProvider).listBranches(),
   retry: (_, _) => null,
 );
+
+const _bootstrapMonth = '2000-01';
 
 final attendanceControllerProvider =
     NotifierProvider<AttendanceController, AttendanceHomeState>(
@@ -134,8 +132,6 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
       ref.read(attendanceRepositoryProvider);
   InstallIdStore get _installIdStore => ref.read(installIdStoreProvider);
   LocationService get _locationService => ref.read(locationServiceProvider);
-  DateTime Function() get _clock => ref.read(attendanceClockProvider);
-
   @override
   AttendanceHomeState build() {
     scheduleMicrotask(refresh);
@@ -150,13 +146,19 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         AttendanceNotCheckedIn(:final today) => today.substring(0, 7),
         AttendanceCheckedIn(:final today) => today.substring(0, 7),
         AttendanceCompleted(:final today) => today.substring(0, 7),
-        _ => _monthOf(_clock()),
+        _ => _bootstrapMonth,
       };
       var current = await _repository.getMyMonth(month);
-      final serverMonth = current.today.substring(0, 7);
-      if (serverMonth != month) {
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final serverMonth = current.today.substring(0, 7);
+        if (serverMonth == month && current.month == month) break;
         month = serverMonth;
-        current = await _repository.getMyMonth(month);
+        current = await _repository.getMyMonth(serverMonth);
+      }
+      if (current.today.substring(0, 7) != current.month) {
+        throw const FormatException(
+          'The server returned attendance for a different month than today.',
+        );
       }
 
       final days = <String, AttendanceDay>{...current.days};
@@ -423,9 +425,6 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
       AttendanceLoading() || AttendanceLoadError() => current,
     };
   }
-
-  String _monthOf(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}';
 
   String _previousMonth(String month) {
     final year = int.parse(month.substring(0, 4));
