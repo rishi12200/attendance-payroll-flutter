@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../domain/user_profile.dart';
+import '../../attendance/presentation/employee_attendance_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({required this.role, super.key});
@@ -24,6 +25,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(currentProfileProvider).asData?.value;
     final isAdmin = role == UserRole.admin;
+    if (!isAdmin) return const EmployeeAttendanceScreen();
 
     return Scaffold(
       appBar: AppBar(

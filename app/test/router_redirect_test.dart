@@ -6,6 +6,9 @@ import 'package:app/features/auth/domain/user_profile.dart';
 import 'package:app/features/branches/data/branches_providers.dart';
 import 'package:app/features/branches/domain/branch.dart';
 import 'package:app/features/branches/presentation/branch_list_screen.dart';
+import 'package:app/features/attendance/domain/attendance_controller.dart';
+import 'package:app/features/attendance/presentation/employee_attendance_screen.dart';
+import 'package:app/features/attendance/presentation/location_estimate.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -187,4 +190,41 @@ void main() {
     expect(find.byType(BranchListScreen), findsOneWidget);
     expect(find.text('No branches found.'), findsOneWidget);
   });
+
+  testWidgets('employee home routes to the attendance screen', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith(
+            (ref) => Stream.value(
+              const AuthIdentity(uid: 'employee-1', email: 'employee@example.com'),
+            ),
+          ),
+          currentProfileProvider.overrideWith(
+            (ref) async => profile(UserRole.employee),
+          ),
+          attendanceControllerProvider.overrideWith(
+            _RouterAttendanceController.new,
+          ),
+          employeeBranchesProvider.overrideWith((ref) async => <Branch>[]),
+          locationEstimateProvider.overrideWith(
+            (ref) async => const LocationEstimateNoBranches(),
+          ),
+        ],
+        child: const _RouterApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EmployeeAttendanceScreen), findsOneWidget);
+    expect(find.text('Test User'), findsOneWidget);
+  });
+}
+
+class _RouterAttendanceController extends AttendanceController {
+  @override
+  AttendanceHomeState build() => const AttendanceNotCheckedIn(
+    today: '2026-10-07',
+    serverTime: '2026-10-07T12:00:00.000Z',
+  );
 }
