@@ -67,6 +67,12 @@ async function request(
 
 function makeApp(asAdmin = false, updateError?: Error) {
   const calls: string[] = [];
+  const salaryAdds: Array<{
+    uid: string;
+    effectiveFrom: string;
+    monthlyCtcPaise: number;
+  }> = [];
+  const deactivations: Array<{ uid: string; callerUid: string; dol?: string }> = [];
   let employeeState: EmployeeRecord = { ...activeEmployee };
   const updates: Array<{
     uid: string;
@@ -112,14 +118,19 @@ function makeApp(asAdmin = false, updateError?: Error) {
     },
     addSalaryRevision: async (uid, effectiveFrom, monthlyCtcPaise) => {
       calls.push('add-salary');
+      salaryAdds.push({ uid, effectiveFrom, monthlyCtcPaise });
       return { empId: uid, effectiveFrom, monthlyCtcPaise };
     },
     listSalaryHistory: async (uid): Promise<SalaryRevision[]> => {
       calls.push('list-salary');
       return [{ empId: uid, effectiveFrom: '2026-10-01', monthlyCtcPaise: 2500000 }];
     },
-    deactivateEmployee: async (_uid, _callerUid, dol) => {
+    deactivateEmployee: async (uid, callerUid, dol) => {
       calls.push('deactivate');
+      deactivations.push({ uid, callerUid, dol });
+      if (uid !== 'employee-1') {
+        throw new Error('route passed an invalid employee id');
+      }
       employeeState = {
         ...employeeState,
         status: 'inactive',
@@ -147,6 +158,8 @@ function makeApp(asAdmin = false, updateError?: Error) {
   return {
     calls,
     updates,
+    salaryAdds,
+    deactivations,
     app: createApp({
       verifyIdToken: async (value) =>
         value === 'employee-token' && !asAdmin
@@ -283,6 +296,37 @@ test('PATCH passes path params and validated body independently', async () => {
   assert.equal(result.body.email, activeEmployee.email);
   assert.equal(result.body.editedBy, 'admin-1');
   assert.equal(result.body.updatedAt, '2026-10-08T10:00:00.000Z');
+});
+
+test('salary and deactivate routes preserve validated params alongside their bodies', async () => {
+  const { app, salaryAdds, deactivations } = makeApp(true);
+
+  const salary = await request(app, '/employees/employee-1/salary', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      effectiveFrom: '2026-10-03',
+      monthlyCtcPaise: 3000000,
+    }),
+  });
+  assert.equal(salary.status, 201);
+  assert.deepEqual(salaryAdds, [
+    {
+      uid: 'employee-1',
+      effectiveFrom: '2026-10-03',
+      monthlyCtcPaise: 3000000,
+    },
+  ]);
+
+  const deactivation = await request(app, '/employees/employee-1/deactivate', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ dol: '2026-10-06' }),
+  });
+  assert.equal(deactivation.status, 200);
+  assert.deepEqual(deactivations, [
+    { uid: 'employee-1', callerUid: 'admin-1', dol: '2026-10-06' },
+  ]);
 });
 
 test('employee write responses match the subsequent admin GET', async () => {
