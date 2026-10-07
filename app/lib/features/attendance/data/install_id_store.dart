@@ -10,9 +10,18 @@ class SharedPreferencesInstallIdStore implements InstallIdStore {
   const SharedPreferencesInstallIdStore();
 
   static const _key = 'attendance_install_id';
+  static Future<String>? _pendingCreation;
 
   @override
-  Future<String> getOrCreate() async {
+  Future<String> getOrCreate() {
+    final pending = _pendingCreation;
+    if (pending != null) return pending;
+    final creation = _createOrRead();
+    _pendingCreation = creation;
+    return creation.whenComplete(() => _pendingCreation = null);
+  }
+
+  Future<String> _createOrRead() async {
     final preferences = await SharedPreferences.getInstance();
     final existing = preferences.getString(_key);
     if (existing != null && existing.isNotEmpty) return existing;

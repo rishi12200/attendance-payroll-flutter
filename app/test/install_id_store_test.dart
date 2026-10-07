@@ -9,10 +9,15 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     const store = SharedPreferencesInstallIdStore();
 
-    final first = await store.getOrCreate();
+    final simultaneous = await Future.wait([
+      store.getOrCreate(),
+      store.getOrCreate(),
+    ]);
+    final first = simultaneous.first;
     final second = await store.getOrCreate();
 
     expect(first, matches(RegExp(r'^[0-9a-f]{32}$')));
+    expect(simultaneous.last, first);
     expect(second, first);
   });
 }
