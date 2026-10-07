@@ -57,7 +57,6 @@ export class FirestoreEmployeeStore implements EmployeeStore {
   async listEmployees(): Promise<EmployeeRecord[]> {
     const snapshot = await this.firestore
       .collection('employees')
-      .where('role', '==', 'employee')
       .orderBy('empCode')
       .get();
     return snapshot.docs.map((document) => ({

@@ -318,3 +318,22 @@ test('only admins receive current salary and employees can read only themselves'
     'FORBIDDEN',
   );
 });
+
+test('lists only employee documents in empCode order without salary fields', async () => {
+  const { store, service } = employeeService();
+  store.employees.set('employee-2', employeeRecord({ empCode: 'EMP002' }));
+  store.employees.set('employee-1', employeeRecord({ empCode: 'EMP001' }));
+  store.employees.set('admin-1', employeeRecord({ role: 'admin', empCode: undefined }));
+  store.salaries.set('employee-1_2026-10-01', {
+    empId: 'employee-1',
+    effectiveFrom: '2026-10-01',
+    monthlyCtcPaise: 2500000,
+  });
+
+  const result = await service.listEmployees('all');
+  assert.deepEqual(
+    result.map((employee) => employee.empCode),
+    ['EMP001', 'EMP002'],
+  );
+  assert.equal('monthlyCtcPaise' in result[0], false);
+});
