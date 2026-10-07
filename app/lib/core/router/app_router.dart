@@ -5,6 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/home_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/domain/user_profile.dart';
+import '../../features/employees/presentation/admin_shell.dart';
+import '../../features/employees/presentation/add_employee_screen.dart';
+import '../../features/employees/presentation/employee_detail_screen.dart';
+import '../../features/employees/presentation/employee_edit_screen.dart';
+import '../../features/employees/presentation/employee_list_screen.dart';
 import '../auth/auth_providers.dart';
 import 'router_redirect.dart';
 
@@ -45,13 +50,38 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/admin',
-        builder: (context, state) =>
-            const HomeScreen(role: UserRole.admin),
+        redirect: (context, state) => '/admin/dashboard',
+      ),
+      ShellRoute(
+        builder: (context, state, child) => AdminShellScreen(child: child),
         routes: [
           GoRoute(
-            path: ':section',
+            path: '/admin/dashboard',
             builder: (context, state) =>
                 const HomeScreen(role: UserRole.admin),
+          ),
+          GoRoute(
+            path: '/admin/employees',
+            builder: (context, state) => const EmployeeListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => const AddEmployeeScreen(),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) =>
+                    EmployeeDetailScreen(id: state.pathParameters['id']!),
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => EmployeeEditScreen(
+                      id: state.pathParameters['id']!,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),

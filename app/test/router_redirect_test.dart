@@ -13,7 +13,7 @@ void main() {
   test('holds the splash location while authentication or profile loads', () {
     expect(
       routerRedirect(
-        location: '/admin',
+        location: '/admin/dashboard',
         authLoading: true,
         isSignedIn: false,
         profileLoading: false,
@@ -62,7 +62,7 @@ void main() {
         profileError: false,
         profile: admin,
       ),
-      '/admin',
+      '/admin/dashboard',
     );
     expect(
       routerRedirect(
@@ -73,11 +73,33 @@ void main() {
         profileError: false,
         profile: admin,
       ),
-      '/admin',
+      '/admin/dashboard',
     );
     expect(
       routerRedirect(
-        location: '/admin',
+        location: '/admin/employees',
+        authLoading: false,
+        isSignedIn: true,
+        profileLoading: false,
+        profileError: false,
+        profile: employee,
+      ),
+      '/employee',
+    );
+    expect(
+      routerRedirect(
+        location: '/admin/employees/employee-1/edit',
+        authLoading: false,
+        isSignedIn: true,
+        profileLoading: false,
+        profileError: false,
+        profile: employee,
+      ),
+      '/employee',
+    );
+    expect(
+      routerRedirect(
+        location: '/administrator',
         authLoading: false,
         isSignedIn: true,
         profileLoading: false,

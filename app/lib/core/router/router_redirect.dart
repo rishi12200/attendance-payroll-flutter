@@ -20,12 +20,16 @@ String? routerRedirect({
     return location == '/login' ? null : '/login';
   }
 
-  final home = profile.role == UserRole.admin ? '/admin' : '/employee';
+  final home = profile.role == UserRole.admin
+      ? '/admin/dashboard'
+      : '/employee';
   if (location == '/' || location == '/login') return home;
 
   final canAccessRoleRoutes = switch (profile.role) {
-    UserRole.admin => location.startsWith('/admin'),
-    UserRole.employee => location.startsWith('/employee'),
+    UserRole.admin =>
+      location == '/admin' || location.startsWith('/admin/'),
+    UserRole.employee =>
+      location == '/employee' || location.startsWith('/employee/'),
   };
   return canAccessRoleRoutes ? null : home;
 }
