@@ -171,7 +171,7 @@ export class EmployeeService {
       const current = revisions
         .filter((revision) => compareDateStrings(revision.effectiveFrom, today) <= 0)
         .sort((left, right) => compareDateStrings(right.effectiveFrom, left.effectiveFrom))[0];
-      result.currentMonthlyCtcPaise = current?.monthlyCtcPaise;
+      result.currentMonthlyCtcPaise = current?.monthlyCtcPaise ?? null;
     } else {
       delete result.currentMonthlyCtcPaise;
     }

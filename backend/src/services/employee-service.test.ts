@@ -250,6 +250,7 @@ test('rejects salary revisions dated before the joining date', async () => {
 test('lists salary history newest first', async () => {
   const { service, store } = employeeService();
   store.employees.set('employee-1', employeeRecord());
+  store.employees.set('employee-2', employeeRecord({ empCode: 'EMP002' }));
   store.salaries.set('employee-1_2026-10-01', {
     empId: 'employee-1',
     effectiveFrom: '2026-10-01',
@@ -354,6 +355,7 @@ test('reactivates the Auth user and clears DOL', async () => {
 test('only admins receive current salary and employees can read only themselves', async () => {
   const { store, service } = employeeService();
   store.employees.set('employee-1', employeeRecord());
+  store.employees.set('employee-2', employeeRecord({ empCode: 'EMP002' }));
   store.salaries.set('employee-1_2026-10-01', {
     empId: 'employee-1',
     effectiveFrom: '2026-10-01',
@@ -361,6 +363,11 @@ test('only admins receive current salary and employees can read only themselves'
   });
   store.salaries.set('employee-1_2026-10-08', {
     empId: 'employee-1',
+    effectiveFrom: '2026-10-08',
+    monthlyCtcPaise: 3500000,
+  });
+  store.salaries.set('employee-2_2026-10-08', {
+    empId: 'employee-2',
     effectiveFrom: '2026-10-08',
     monthlyCtcPaise: 3500000,
   });
@@ -374,6 +381,11 @@ test('only admins receive current salary and employees can read only themselves'
     role: 'employee',
   });
   assert.equal(adminView.currentMonthlyCtcPaise, 2500000);
+  assert.equal(
+    (await service.getEmployee('employee-2', { uid: 'admin-1', role: 'admin' }))
+      .currentMonthlyCtcPaise,
+    null,
+  );
   assert.equal('currentMonthlyCtcPaise' in ownView, false);
   await expectAppError(
     service.getEmployee('employee-1', { uid: 'employee-2', role: 'employee' }),
