@@ -363,7 +363,7 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [x] `seed-admin` script that creates the first admin, sets the claim, and writes the admin doc
 - [x] `GET /me`
 - [x] Flutter login, API client that attaches the token, routing to the admin or employee home
-- [ ] **Done when:** two test users log in and see different screens, and a request without a token gets 401
+- [x] **Done when:** two test users log in and see different screens, and a request without a token gets 401
 
 ### Step 2: Employees
 - [ ] Employee endpoints, ID counter transaction, salary revisions
