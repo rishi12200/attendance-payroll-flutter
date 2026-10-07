@@ -14,7 +14,18 @@ typedef IdTokenProvider = Future<String?> Function({
 });
 typedef UnauthorizedHandler = Future<void> Function();
 
-class ApiClient implements ProfileApi {
+abstract interface class ApiTransport {
+  Future<Object?> getJson(
+    String path, {
+    Map<String, Object?>? queryParameters,
+  });
+
+  Future<Object?> postJson(String path, {Object? data});
+
+  Future<Object?> patchJson(String path, {Object? data});
+}
+
+class ApiClient implements ProfileApi, ApiTransport {
   ApiClient({
     required IdTokenProvider getIdToken,
     required UnauthorizedHandler onUnauthorized,
@@ -31,6 +42,30 @@ class ApiClient implements ProfileApi {
   }
 
   final Dio dio;
+
+  @override
+  Future<Object?> getJson(
+    String path, {
+    Map<String, Object?>? queryParameters,
+  }) async {
+    final response = await dio.get<dynamic>(
+      path,
+      queryParameters: queryParameters,
+    );
+    return response.data;
+  }
+
+  @override
+  Future<Object?> postJson(String path, {Object? data}) async {
+    final response = await dio.post<dynamic>(path, data: data);
+    return response.data;
+  }
+
+  @override
+  Future<Object?> patchJson(String path, {Object? data}) async {
+    final response = await dio.patch<dynamic>(path, data: data);
+    return response.data;
+  }
 
   @override
   Future<UserProfile> getMe() async {
