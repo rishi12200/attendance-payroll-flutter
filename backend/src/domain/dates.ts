@@ -1,8 +1,22 @@
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+export function istDateOf(date: Date): string {
+  if (Number.isNaN(date.getTime())) {
+    throw new RangeError('IST date requires a valid Date.');
+  }
+  return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+export function monthOf(dateString: string): string {
+  if (!isValidDateString(dateString)) {
+    throw new RangeError('Month extraction requires a valid YYYY-MM-DD string.');
+  }
+  return dateString.slice(0, 7);
+}
+
 export function todayIST(now: Date = new Date()): string {
-  return new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+  return istDateOf(now);
 }
 
 export function isValidDateString(value: unknown): value is string {
