@@ -11,6 +11,8 @@ import 'package:app/features/employees/domain/salary_revision.dart';
 import 'package:app/features/employees/presentation/add_employee_screen.dart';
 import 'package:app/features/employees/presentation/employee_detail_screen.dart';
 import 'package:app/features/employees/presentation/employee_list_screen.dart';
+import 'package:app/features/branches/data/branches_providers.dart';
+import 'package:app/features/branches/domain/branch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +29,30 @@ const employee = Employee(
   updatedAt: '2026-10-01T00:00:00.000Z',
   designation: 'Associate',
 );
+const assignedEmployee = Employee(
+  uid: 'employee-1',
+  empCode: 'EMP001',
+  name: 'Employee One',
+  email: 'one@example.com',
+  role: 'employee',
+  status: EmployeeStatus.active,
+  doj: '2026-10-01',
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+  primaryBranchId: 'branch-1',
+  allowedBranchIds: ['branch-1', 'inactive-branch'],
+);
+const activeBranch = Branch(
+  id: 'branch-1',
+  name: 'Chennai Office',
+  state: 'Tamil Nadu',
+  lat: 13.08,
+  lng: 80.27,
+  radiusMeters: 150,
+  status: BranchStatus.active,
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+);
 
 class FakeEmployeeRepository implements EmployeeRepository {
   int deactivateCalls = 0;
@@ -41,6 +67,8 @@ class FakeEmployeeRepository implements EmployeeRepository {
     required int monthlyCtcPaise,
     String? phone,
     String? designation,
+    String? primaryBranchId,
+    List<String>? allowedBranchIds,
   }) async => employee;
 
   @override
@@ -82,7 +110,17 @@ class FakeEmployeeRepository implements EmployeeRepository {
   ) async => employee;
 }
 
-Widget _app(Widget child) => ProviderScope(child: MaterialApp(home: child));
+Widget _app(Widget child) => ProviderScope(
+  overrides: [branchesProvider('active').overrideWith((ref) async => [])],
+  child: MaterialApp(home: child),
+);
+
+Future<void> _scrollTo(WidgetTester tester, Finder target) async {
+  await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -300));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+}
 
 void main() {
   group('employee list states', () {
@@ -160,7 +198,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(_app(const AddEmployeeScreen()));
-      await tester.ensureVisible(find.text('Create employee'));
+      await _scrollTo(tester, find.text('Create employee'));
       await tester.tap(find.text('Create employee'));
       await tester.pumpAndSettle();
 
@@ -182,7 +220,7 @@ void main() {
       await tester.enterText(fields.at(1), 'employee@example.com');
       await tester.enterText(fields.at(2), 'short');
       await tester.enterText(fields.at(5), '10.999');
-      await tester.ensureVisible(find.text('Create employee'));
+      await _scrollTo(tester, find.text('Create employee'));
       await tester.tap(find.text('Create employee'));
       await tester.pumpAndSettle();
 
@@ -207,6 +245,7 @@ void main() {
           employeeRepositoryProvider.overrideWithValue(repository),
           employeeProvider('employee-1').overrideWith((ref) async => employee),
           salaryHistoryProvider('employee-1').overrideWith((ref) async => []),
+          branchesProvider('active').overrideWith((ref) async => <Branch>[]),
           currentProfileProvider.overrideWith(
             (ref) async => const UserProfile(
               uid: 'admin-1',
@@ -229,5 +268,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.deactivateCalls, 1);
     expect(repository.deactivationDate, todayIST());
+  });
+
+  testWidgets('employee details show branch names and fall back to IDs', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          employeeProvider('employee-1')
+              .overrideWith((ref) async => assignedEmployee),
+          salaryHistoryProvider('employee-1').overrideWith((ref) async => []),
+          branchesProvider('active')
+              .overrideWith((ref) async => [activeBranch]),
+          currentProfileProvider.overrideWith(
+            (ref) async => const UserProfile(
+              uid: 'employee-1',
+              name: 'Employee One',
+              email: 'one@example.com',
+              role: UserRole.employee,
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: EmployeeDetailScreen(id: 'employee-1')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(find.text('Chennai Office'), findsWidgets);
+    expect(find.textContaining('inactive-branch'), findsOneWidget);
   });
 }

@@ -16,6 +16,8 @@ abstract interface class EmployeeRepository {
     required int monthlyCtcPaise,
     String? phone,
     String? designation,
+    String? primaryBranchId,
+    List<String>? allowedBranchIds,
   });
   Future<Employee> updateEmployee(String id, Map<String, Object?> fields);
   Future<List<SalaryRevision>> listSalary(String id);
@@ -62,6 +64,8 @@ class ApiEmployeeRepository implements EmployeeRepository {
     required int monthlyCtcPaise,
     String? phone,
     String? designation,
+    String? primaryBranchId,
+    List<String>? allowedBranchIds,
   }) => _withApiErrors(() async {
     final body = <String, Object?>{
       'name': name,
@@ -72,6 +76,10 @@ class ApiEmployeeRepository implements EmployeeRepository {
       if (phone != null && phone.isNotEmpty) 'phone': phone,
       if (designation != null && designation.isNotEmpty)
         'designation': designation,
+      if (primaryBranchId != null || allowedBranchIds != null) ...{
+        'primaryBranchId': primaryBranchId,
+        'allowedBranchIds': allowedBranchIds ?? const <String>[],
+      },
     };
     return Employee.fromJson(
       _asJsonMap(await _api.postJson('/employees', data: body)),

@@ -77,6 +77,15 @@ void main() {
       expect(missing.dol, isNull);
       expect(nullable.currentMonthlyCtcPaise, isNull);
       expect(nullable.editedAt, isNull);
+      expect(missing.primaryBranchId, isNull);
+      expect(missing.allowedBranchIds, isEmpty);
+      final branchFields = Employee.fromJson({
+        ...requiredFields,
+        'primaryBranchId': 'branch-1',
+        'allowedBranchIds': <String>['branch-1', 'branch-2'],
+      });
+      expect(branchFields.primaryBranchId, 'branch-1');
+      expect(branchFields.allowedBranchIds, ['branch-1', 'branch-2']);
     });
 
     test('rejects malformed required fields and non-integer salary', () {

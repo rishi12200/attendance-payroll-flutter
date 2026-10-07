@@ -53,6 +53,8 @@ const employeeJson = <String, Object?>{
   'doj': '2026-10-01',
   'createdAt': '2026-10-01T00:00:00.000Z',
   'updatedAt': '2026-10-01T00:00:00.000Z',
+  'primaryBranchId': null,
+  'allowedBranchIds': <String>[],
 };
 
 void main() {
@@ -76,6 +78,8 @@ void main() {
       doj: '2026-10-01',
       monthlyCtcPaise: 2500050,
       phone: '',
+      primaryBranchId: 'branch-1',
+      allowedBranchIds: ['branch-1'],
     );
 
     expect(api.requests.single.method, 'POST');
@@ -86,6 +90,8 @@ void main() {
       'tempPassword': 'temporary-password',
       'doj': '2026-10-01',
       'monthlyCtcPaise': 2500050,
+      'primaryBranchId': 'branch-1',
+      'allowedBranchIds': ['branch-1'],
     });
   });
 
@@ -93,7 +99,11 @@ void main() {
     final api = FakeApiTransport();
     final repository = ApiEmployeeRepository(api);
     await repository.getEmployee('employee-1');
-    await repository.updateEmployee('employee-1', {'designation': 'Lead'});
+    await repository.updateEmployee('employee-1', {
+      'designation': 'Lead',
+      'primaryBranchId': 'branch-1',
+      'allowedBranchIds': ['branch-1', 'branch-2'],
+    });
     api.response = [
       {
         'empId': 'employee-1',
@@ -123,6 +133,11 @@ void main() {
     expect(api.requests[3].data, {
       'effectiveFrom': '2026-10-01',
       'monthlyCtcPaise': 2500050,
+    });
+    expect(api.requests[1].data, {
+      'designation': 'Lead',
+      'primaryBranchId': 'branch-1',
+      'allowedBranchIds': ['branch-1', 'branch-2'],
     });
     expect(api.requests[4].data, {'dol': '2026-10-07'});
     expect(api.requests[5].data, isNull);

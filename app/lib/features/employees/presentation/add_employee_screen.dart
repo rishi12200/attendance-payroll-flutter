@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/app_exception.dart';
+import '../../branches/data/branches_providers.dart';
+import '../../branches/domain/branch_assignment.dart';
+import '../../branches/presentation/branch_assignment_fields.dart';
 import '../data/employees_providers.dart';
 import '../domain/employee_dates.dart';
 import '../domain/money.dart';
@@ -27,6 +30,10 @@ class _AddEmployeeScreenState extends ConsumerState<AddEmployeeScreen> {
   bool _submitting = false;
   String? _errorMessage;
   Map<String, String> _fieldErrors = {};
+  BranchAssignment _assignment = const BranchAssignment(
+    primaryBranchId: null,
+    allowedBranchIds: {},
+  );
 
   @override
   void dispose() {
@@ -60,6 +67,7 @@ class _AddEmployeeScreenState extends ConsumerState<AddEmployeeScreen> {
     });
 
     try {
+      final branchesLoaded = ref.read(branchesProvider('active')).hasValue;
       final employee = await ref
           .read(employeeRepositoryProvider)
           .createEmployee(
@@ -72,6 +80,12 @@ class _AddEmployeeScreenState extends ConsumerState<AddEmployeeScreen> {
                 : _designation.text.trim(),
             doj: _doj,
             monthlyCtcPaise: paise,
+            primaryBranchId: branchesLoaded
+                ? _assignment.primaryBranchId
+                : null,
+            allowedBranchIds: branchesLoaded
+                ? _assignment.allowedBranchIds.toList()
+                : null,
           );
       _password.clear();
       ref.invalidate(employeesProvider('active'));
@@ -111,7 +125,9 @@ class _AddEmployeeScreenState extends ConsumerState<AddEmployeeScreen> {
     if (issues is! List) return {};
     final result = <String, String>{};
     for (final issue in issues) {
-      if (issue is Map && issue['path'] is String && issue['message'] is String) {
+      if (issue is Map &&
+          issue['path'] is String &&
+          issue['message'] is String) {
         result[issue['path'] as String] = issue['message'] as String;
       }
     }
@@ -121,7 +137,9 @@ class _AddEmployeeScreenState extends ConsumerState<AddEmployeeScreen> {
   String? _required(String? value, String label, {int minLength = 1}) {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return '$label is required.';
-    if (text.length < minLength) return '$label must be at least $minLength characters.';
+    if (text.length < minLength) {
+      return '$label must be at least $minLength characters.';
+    }
     return null;
   }
 
@@ -131,110 +149,131 @@ class _AddEmployeeScreenState extends ConsumerState<AddEmployeeScreen> {
       appBar: AppBar(title: const Text('Add employee')),
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (_errorMessage != null) ...[
-              _ErrorMessage(message: _errorMessage!),
-              const SizedBox(height: 12),
-            ],
-            TextFormField(
-              controller: _name,
-              decoration: InputDecoration(
-                labelText: 'Name',
-                errorText: _fieldErrors['name'],
-              ),
-              validator: (value) => _required(value, 'Name'),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                labelText: 'Email',
-                errorText: _fieldErrors['email'],
-              ),
-              validator: (value) {
-                final requiredError = _required(value, 'Email');
-                if (requiredError != null) return requiredError;
-                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                    .hasMatch(value!.trim())) {
-                  return 'Enter a valid email address.';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _password,
-              obscureText: _obscurePassword,
-              decoration: InputDecoration(
-                labelText: 'Temporary password',
-                helperText: 'At least 8 characters. Share it securely.',
-                errorText: _fieldErrors['tempPassword'],
-                suffixIcon: IconButton(
-                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
-                  onPressed: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
-                  icon: Icon(
-                    _obscurePassword ? Icons.visibility : Icons.visibility_off,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_errorMessage != null) ...[
+                  _ErrorMessage(message: _errorMessage!),
+                  const SizedBox(height: 12),
+                ],
+                TextFormField(
+                  controller: _name,
+                  decoration: InputDecoration(
+                    labelText: 'Name',
+                    errorText: _fieldErrors['name'],
+                  ),
+                  validator: (value) => _required(value, 'Name'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    errorText: _fieldErrors['email'],
+                  ),
+                  validator: (value) {
+                    final requiredError = _required(value, 'Email');
+                    if (requiredError != null) return requiredError;
+                    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                        .hasMatch(value!.trim())) {
+                      return 'Enter a valid email address.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _password,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: 'Temporary password',
+                    helperText: 'At least 8 characters. Share it securely.',
+                    errorText: _fieldErrors['tempPassword'],
+                    suffixIcon: IconButton(
+                      tooltip: _obscurePassword
+                          ? 'Show password'
+                          : 'Hide password',
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                    ),
+                  ),
+                  validator: (value) =>
+                      _required(value, 'Password', minLength: 8),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Phone (optional)',
+                    errorText: _fieldErrors['phone'],
                   ),
                 ),
-              ),
-              validator: (value) =>
-                  _required(value, 'Password', minLength: 8),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _designation,
+                  decoration: InputDecoration(
+                    labelText: 'Designation (optional)',
+                    errorText: _fieldErrors['designation'],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _pickDoj,
+                  icon: const Icon(Icons.calendar_month),
+                  label: Text('Date of joining: $_doj'),
+                ),
+                if (_fieldErrors['doj'] case final error?) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    error,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _salary,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Monthly salary (₹)',
+                    errorText: _fieldErrors['monthlyCtcPaise'],
+                  ),
+                  validator: (value) => rupeesStringToPaise(value ?? '') == null
+                      ? 'Enter a positive amount with at most 2 decimals.'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                BranchAssignmentFields(
+                  assignment: _assignment,
+                  onChanged: (value) => setState(() => _assignment = value),
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: _submitting ? null : _submit,
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Create employee'),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _phone,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                labelText: 'Phone (optional)',
-                errorText: _fieldErrors['phone'],
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _designation,
-              decoration: InputDecoration(
-                labelText: 'Designation (optional)',
-                errorText: _fieldErrors['designation'],
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _pickDoj,
-              icon: const Icon(Icons.calendar_month),
-              label: Text('Date of joining: $_doj'),
-            ),
-            if (_fieldErrors['doj'] case final error?) ...[
-              const SizedBox(height: 4),
-              Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ],
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _salary,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Monthly salary (₹)',
-                errorText: _fieldErrors['monthlyCtcPaise'],
-              ),
-              validator: (value) => rupeesStringToPaise(value ?? '') == null
-                  ? 'Enter a positive amount with at most 2 decimals.'
-                  : null,
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Create employee'),
-            ),
-          ],
+          ),
         ),
       ),
     );

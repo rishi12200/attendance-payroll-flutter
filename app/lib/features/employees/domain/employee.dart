@@ -17,6 +17,8 @@ class Employee {
     this.editedBy,
     this.editedAt,
     this.currentMonthlyCtcPaise,
+    this.primaryBranchId,
+    this.allowedBranchIds = const [],
   });
 
   final String uid;
@@ -34,6 +36,8 @@ class Employee {
   final String? editedBy;
   final String? editedAt;
   final int? currentMonthlyCtcPaise;
+  final String? primaryBranchId;
+  final List<String> allowedBranchIds;
 
   factory Employee.fromJson(Map<String, dynamic> json) {
     final uid = json['uid'];
@@ -60,6 +64,12 @@ class Employee {
         doj is! String ||
         createdAt is! String ||
         updatedAt is! String ||
+        (json['primaryBranchId'] != null &&
+            json['primaryBranchId'] is! String) ||
+        (json['allowedBranchIds'] != null &&
+            (json['allowedBranchIds'] is! List ||
+                (json['allowedBranchIds'] as List)
+                    .any((id) => id is! String))) ||
         (salary != null && salary is! int)) {
       throw const FormatException('The server returned an invalid employee.');
     }
@@ -80,6 +90,12 @@ class Employee {
       editedBy: _optionalString(json['editedBy']),
       editedAt: _optionalString(json['editedAt']),
       currentMonthlyCtcPaise: salary as int?,
+      primaryBranchId: json['primaryBranchId'] as String?,
+      allowedBranchIds: json['allowedBranchIds'] == null
+          ? const []
+          : List<String>.unmodifiable(
+              (json['allowedBranchIds'] as List).cast<String>(),
+            ),
     );
   }
 }

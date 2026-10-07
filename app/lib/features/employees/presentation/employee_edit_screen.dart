@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/app_exception.dart';
+import '../../branches/domain/branch_assignment.dart';
+import '../../branches/presentation/branch_assignment_fields.dart';
 import '../data/employees_providers.dart';
 import '../domain/employee.dart';
 import '../domain/employee_dates.dart';
@@ -58,6 +60,11 @@ class _EditFormState extends ConsumerState<_EditForm> {
     text: widget.employee.designation ?? '',
   );
   late String _doj = widget.employee.doj;
+  late BranchAssignment _assignment = BranchAssignment(
+    primaryBranchId: widget.employee.primaryBranchId,
+    allowedBranchIds: widget.employee.allowedBranchIds.toSet(),
+  );
+  bool _assignmentChanged = false;
   bool _saving = false;
   String? _error;
 
@@ -93,6 +100,10 @@ class _EditFormState extends ConsumerState<_EditForm> {
           'phone': _phone.text.trim(),
           'designation': _designation.text.trim(),
           'doj': _doj,
+          if (_assignmentChanged) ...{
+            'primaryBranchId': _assignment.primaryBranchId,
+            'allowedBranchIds': _assignment.allowedBranchIds.toList(),
+          },
         },
       );
       ref.invalidate(employeeProvider(widget.employee.uid));
@@ -115,9 +126,12 @@ class _EditFormState extends ConsumerState<_EditForm> {
   @override
   Widget build(BuildContext context) => Form(
     key: _formKey,
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    child: SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
         if (_error != null)
           Text(
             _error!,
@@ -158,6 +172,14 @@ class _EditFormState extends ConsumerState<_EditForm> {
           icon: const Icon(Icons.calendar_month),
           label: Text('Date of joining: $_doj'),
         ),
+        const SizedBox(height: 16),
+        BranchAssignmentFields(
+          assignment: _assignment,
+          onChanged: (value) => setState(() {
+            _assignment = value;
+            _assignmentChanged = true;
+          }),
+        ),
         const SizedBox(height: 24),
         FilledButton(
           onPressed: _saving ? null : _save,
@@ -165,7 +187,9 @@ class _EditFormState extends ConsumerState<_EditForm> {
               ? const CircularProgressIndicator()
               : const Text('Save changes'),
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 }

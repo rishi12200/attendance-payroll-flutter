@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api/app_exception.dart';
 import '../../../core/auth/auth_providers.dart';
+import '../../branches/data/branches_providers.dart';
+import '../../branches/domain/branch.dart';
 import '../data/employees_providers.dart';
 import '../domain/employee.dart';
 import '../domain/employee_dates.dart';
@@ -87,6 +89,7 @@ class _EmployeeDetails extends ConsumerWidget {
                   label: 'Date of leaving',
                   value: employee.dol ?? '—',
                 ),
+                _EmployeeBranchNames(employee: employee),
                 _FieldLine(
                   label: 'Current monthly salary',
                   value: employee.currentMonthlyCtcPaise == null
@@ -297,6 +300,41 @@ class _SalaryRevisionInput {
 
   final String effectiveFrom;
   final int monthlyCtcPaise;
+}
+
+class _EmployeeBranchNames extends ConsumerWidget {
+  const _EmployeeBranchNames({required this.employee});
+
+  final Employee employee;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final branches = ref.watch(branchesProvider('active')).asData?.value ??
+        const <Branch>[];
+    String nameFor(String? id) {
+      if (id == null) return 'None';
+      for (final branch in branches) {
+        if (branch.id == id) return branch.name;
+      }
+      return id;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLine(
+          label: 'Primary branch',
+          value: nameFor(employee.primaryBranchId),
+        ),
+        _FieldLine(
+          label: 'Allowed branches',
+          value: employee.allowedBranchIds.isEmpty
+              ? 'None'
+              : employee.allowedBranchIds.map(nameFor).join(', '),
+        ),
+      ],
+    );
+  }
 }
 
 class _ErrorPanel extends StatelessWidget {
