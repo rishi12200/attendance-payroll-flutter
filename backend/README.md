@@ -105,6 +105,92 @@ Example employee assignment fields in a create or patch body:
 }
 ```
 
+## Attendance API (Step 4 backend)
+
+All attendance endpoints require an employee ID token. Admin accounts are
+management-only and receive `403 FORBIDDEN`. Attendance dates use IST
+(`YYYY-MM-DD`); punch timestamps are assigned by the server and serialized as
+ISO 8601 strings. The API accepts no client-supplied timestamp fields.
+
+- `POST /attendance/check-in` — record one check-in for today. The server
+  checks employment dates, active assigned branches, GPS accuracy, mock
+  location, geofence distance, and payroll-month lock before writing the
+  attendance day and raw `checkins` record transactionally.
+- `POST /attendance/check-out` — close today's open check-in, or yesterday's
+  open check-in if it is less than 24 hours old. Checkout is saved on the day
+  of its check-in. Location is recorded; accuracy and distance only block
+  checkout when `settings/company.enforceCheckoutLocation` is true.
+- `GET /attendance/me?month=YYYY-MM` — return the caller's month attendance,
+  the current IST date, and server time. `days` is empty if no monthly
+  attendance document exists.
+
+Check-in and check-out accept this body:
+
+```json
+{
+  "lat": 13.0827,
+  "lng": 80.2707,
+  "accuracy": 12,
+  "deviceId": "android-device-1",
+  "isMocked": false
+}
+```
+
+Example check-in response:
+
+```json
+{
+  "date": "2026-10-07",
+  "status": "P",
+  "inTime": "2026-10-07T06:30:00.000Z",
+  "branchId": "branch-abc123",
+  "branchName": "Chennai Office",
+  "distanceMeters": 24.6
+}
+```
+
+Example check-out response:
+
+```json
+{
+  "date": "2026-10-07",
+  "inTime": "2026-10-07T06:30:00.000Z",
+  "outTime": "2026-10-07T15:00:00.000Z",
+  "workedMinutes": 510,
+  "branchId": "branch-abc123",
+  "branchName": "Chennai Office",
+  "distanceMeters": 24.6
+}
+```
+
+Example `GET /attendance/me?month=2026-10` response:
+
+```json
+{
+  "month": "2026-10",
+  "today": "2026-10-07",
+  "serverTime": "2026-10-07T06:30:00.000Z",
+  "days": {
+    "2026-10-07": {
+      "status": "P",
+      "inTime": "2026-10-07T06:30:00.000Z",
+      "inBranchId": "branch-abc123",
+      "inDistance": 24.6,
+      "source": "app"
+    }
+  }
+}
+```
+
+Business-rule error codes include `NOT_YET_JOINED`, `EMPLOYMENT_ENDED`,
+`NO_BRANCH_ASSIGNED`, `ACCURACY_TOO_LOW`, `MOCK_LOCATION`,
+`OUTSIDE_GEOFENCE`, `MONTH_LOCKED`, `ALREADY_CHECKED_IN`,
+`NOT_CHECKED_IN`, and `ALREADY_CHECKED_OUT`. Errors use the standard
+`{ "error": { "code": "...", "message": "...", "details": {} } }` shape.
+Outside-geofence errors include the nearest branch, distance, radius, and
+reported accuracy in `details`. Rejected location attempts are recorded in
+`checkins` on a best-effort basis.
+
 ## Get a development ID token
 
 Set the Firebase project's Web API key in the current PowerShell process, then
