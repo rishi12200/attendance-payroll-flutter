@@ -368,7 +368,7 @@ Each step ends with something you can demo and test. Do one step at a time and c
 ### Step 2: Employees
 - [x] Employee endpoints, ID counter transaction, salary revisions
 - [x] Deactivate and reactivate (disable Auth user, revoke tokens)
-- [ ] Flutter list and add or edit forms
+- [x] Flutter list and add or edit forms
 - [ ] **Done when:** the admin creates an employee who can log in, and a deactivated employee is blocked immediately
 
 ### Step 3: Branches
