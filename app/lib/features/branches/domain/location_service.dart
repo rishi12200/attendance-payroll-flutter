@@ -19,11 +19,13 @@ class LocationSuccess extends LocationResult {
     required this.latitude,
     required this.longitude,
     required this.accuracy,
+    this.isMocked = false,
   });
 
   final double latitude;
   final double longitude;
   final double accuracy;
+  final bool isMocked;
 }
 
 class LocationFailure extends LocationResult {
@@ -68,6 +70,7 @@ class GeolocatorLocationService implements LocationService {
         latitude: position.latitude,
         longitude: position.longitude,
         accuracy: position.accuracy,
+        isMocked: position.isMocked,
       );
     } on LocationServiceDisabledException {
       return const LocationFailure(LocationFailureReason.serviceDisabled);
