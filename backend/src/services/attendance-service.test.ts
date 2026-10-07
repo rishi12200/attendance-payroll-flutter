@@ -146,11 +146,13 @@ async function expectError(
   work: Promise<unknown>,
   status: number,
   code: string,
+  message?: string,
 ) {
   await assert.rejects(work, (error: unknown) => {
     assert.ok(error instanceof AppError);
     assert.equal(error.status, status);
     assert.equal(error.code, code);
+    if (message !== undefined) assert.equal(error.message, message);
     return true;
   });
 }
@@ -215,6 +217,7 @@ test('check-in rejects and records outside, inaccurate, mocked, and unassigned a
     unassigned.service.checkIn(caller, input),
     422,
     'NO_BRANCH_ASSIGNED',
+    'This employee has no active branch assigned.',
   );
 });
 

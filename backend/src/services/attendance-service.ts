@@ -109,7 +109,7 @@ export class AttendanceService {
       throw new AppError(
         422,
         'NO_BRANCH_ASSIGNED',
-        'No active branch is assigned to this employee.',
+        'This employee has no active branch assigned.',
       );
     }
     if (input.accuracy > settings.maxAccuracyMeters) {
