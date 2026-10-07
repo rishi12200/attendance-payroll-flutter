@@ -7,6 +7,7 @@ import {
   BRANCH_LONGITUDE_MIN,
   BRANCH_RADIUS_MAX_METERS,
   BRANCH_RADIUS_MIN_METERS,
+  evaluateGeofence,
   haversineDistanceMeters,
   isValidBranchRadius,
   isValidLatitude,
@@ -46,4 +47,70 @@ test('matches a known long-distance coordinate pair', () => {
     -118.2437,
   );
   assert.ok(distance > 3_935_000 && distance < 3_945_000);
+});
+
+const geofenceBranch = {
+  id: 'branch-1',
+  name: 'Test Office',
+  lat: 0,
+  lng: 0,
+  radiusMeters: 100,
+};
+
+test('geofence accepts locations inside and rejects points just outside', () => {
+  const inside = evaluateGeofence({
+    lat: 0,
+    lng: 0.0008,
+    accuracy: 0,
+    branches: [geofenceBranch],
+  });
+  assert.equal(inside.inside, true);
+  assert.equal(inside.nearestBranch?.id, 'branch-1');
+
+  const outside = evaluateGeofence({
+    lat: 0,
+    lng: 0.00091,
+    accuracy: 0,
+    branches: [geofenceBranch],
+  });
+  assert.equal(outside.inside, false);
+  assert.ok((outside.nearestBranch?.distanceMeters ?? 0) > 100);
+});
+
+test('geofence applies accuracy tolerance but caps it at 50 metres', () => {
+  const cappedBoundary = evaluateGeofence({
+    lat: 0,
+    lng: 0.00126,
+    accuracy: 50,
+    branches: [geofenceBranch],
+  });
+  assert.equal(cappedBoundary.inside, true);
+
+  const overCap = evaluateGeofence({
+    lat: 0,
+    lng: 0.00144,
+    accuracy: 100,
+    branches: [geofenceBranch],
+  });
+  assert.equal(overCap.inside, false);
+});
+
+test('geofence reports the nearest of several branches', () => {
+  const evaluation = evaluateGeofence({
+    lat: 0,
+    lng: 0.01,
+    accuracy: 0,
+    branches: [
+      { ...geofenceBranch, id: 'far', lng: 0.02 },
+      { ...geofenceBranch, id: 'near', lng: 0.0101 },
+    ],
+  });
+  assert.equal(evaluation.nearestBranch?.id, 'near');
+});
+
+test('geofence returns no nearest branch for an empty list', () => {
+  assert.deepEqual(
+    evaluateGeofence({ lat: 0, lng: 0, accuracy: 1, branches: [] }),
+    { nearestBranch: null, inside: false },
+  );
 });
