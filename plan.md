@@ -372,9 +372,9 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [x] **Done when:** the admin creates an employee who can log in, and a deactivated employee is blocked immediately
 
 ### Step 3: Branches
-- [ ] Branch endpoints
+- [x] Branch endpoints
 - [ ] Flutter branch form with "use my current location" and radius
-- [ ] Assign branches to employees
+- [x] Assign branches to employees
 
 ### Step 4: Check-in and check-out (the core)
 - [ ] Haversine, geofence and IST date helpers with unit tests
