@@ -152,7 +152,7 @@ export class EmployeeService {
       .filter((employee) => employee.role === 'employee')
       .filter((employee) => status === 'all' || employee.status === status)
       .sort((left, right) => String(left.empCode ?? '').localeCompare(String(right.empCode ?? '')))
-      .map((employee) => ({ ...employee }));
+      .map(({ currentMonthlyCtcPaise: _currentSalary, monthlyCtcPaise: _salary, ...employee }) => employee);
   }
 
   async getEmployee(

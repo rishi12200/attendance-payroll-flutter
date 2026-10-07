@@ -237,6 +237,37 @@ test('returns 409 for a duplicate salary effective date', async () => {
   );
 });
 
+test('rejects salary revisions dated before the joining date', async () => {
+  const { service } = employeeService();
+  const created = await service.createEmployee(employeeInput());
+  await expectAppError(
+    service.addSalaryRevision(created.uid as string, '2026-09-30', 3000000),
+    422,
+    'INVALID_EFFECTIVE_DATE',
+  );
+});
+
+test('lists salary history newest first', async () => {
+  const { service, store } = employeeService();
+  store.employees.set('employee-1', employeeRecord());
+  store.salaries.set('employee-1_2026-10-01', {
+    empId: 'employee-1',
+    effectiveFrom: '2026-10-01',
+    monthlyCtcPaise: 1000000,
+  });
+  store.salaries.set('employee-1_2026-10-05', {
+    empId: 'employee-1',
+    effectiveFrom: '2026-10-05',
+    monthlyCtcPaise: 2000000,
+  });
+
+  const result = await service.listSalaryHistory('employee-1');
+  assert.deepEqual(
+    result.map((revision) => revision.effectiveFrom),
+    ['2026-10-05', '2026-10-01'],
+  );
+});
+
 test('disables then revokes before writing inactive status and DOL', async () => {
   const { auth, store, service } = employeeService();
   const created = await service.createEmployee(employeeInput());
@@ -251,6 +282,20 @@ test('disables then revokes before writing inactive status and DOL', async () =>
   assert.deepEqual(store.events, ['update:uid-1:inactive']);
   assert.equal(result.status, 'inactive');
   assert.equal(result.dol, '2026-10-07');
+});
+
+test('leaves Auth disabled if the Firestore deactivation update fails', async () => {
+  const { auth, store, service } = employeeService();
+  const created = await service.createEmployee(employeeInput());
+  store.failEmployeeUpdate = true;
+
+  await expectAppError(
+    service.deactivateEmployee(created.uid as string, 'admin-uid'),
+    500,
+    'EMPLOYEE_DEACTIVATION_PARTIAL',
+  );
+  assert.equal(auth.accounts.get(created.uid as string)?.disabled, true);
+  assert.ok(auth.events.includes(`revoke:${created.uid as string}`));
 });
 
 test('refuses deactivation of admins and the caller themself', async () => {
@@ -268,6 +313,24 @@ test('refuses deactivation of admins and the caller themself', async () => {
     403,
     'SELF_DEACTIVATION_FORBIDDEN',
   );
+});
+
+test('repeated deactivation of an inactive employee is idempotent', async () => {
+  const { auth, store, service } = employeeService();
+  const created = await service.createEmployee(employeeInput());
+  const uid = created.uid as string;
+  store.employees.set(uid, {
+    ...store.employees.get(uid)!,
+    status: 'inactive',
+    dol: '2026-10-06',
+  });
+  auth.accounts.get(uid)!.disabled = true;
+  auth.events.length = 0;
+
+  const result = await service.deactivateEmployee(uid, 'admin-uid');
+  assert.equal(result.status, 'inactive');
+  assert.equal(result.dol, '2026-10-06');
+  assert.deepEqual(auth.events, []);
 });
 
 test('reactivates the Auth user and clears DOL', async () => {
@@ -324,6 +387,10 @@ test('lists only employee documents in empCode order without salary fields', asy
   store.employees.set('employee-2', employeeRecord({ empCode: 'EMP002' }));
   store.employees.set('employee-1', employeeRecord({ empCode: 'EMP001' }));
   store.employees.set('admin-1', employeeRecord({ role: 'admin', empCode: undefined }));
+  store.employees.set(
+    'employee-3',
+    employeeRecord({ empCode: 'EMP003', currentMonthlyCtcPaise: 2500000 }),
+  );
   store.salaries.set('employee-1_2026-10-01', {
     empId: 'employee-1',
     effectiveFrom: '2026-10-01',
@@ -333,7 +400,8 @@ test('lists only employee documents in empCode order without salary fields', asy
   const result = await service.listEmployees('all');
   assert.deepEqual(
     result.map((employee) => employee.empCode),
-    ['EMP001', 'EMP002'],
+    ['EMP001', 'EMP002', 'EMP003'],
   );
   assert.equal('monthlyCtcPaise' in result[0], false);
+  assert.equal('currentMonthlyCtcPaise' in result[2], false);
 });
