@@ -5,7 +5,6 @@ import {
 } from '../domain/attendance';
 import {
   evaluateGeofence,
-  type GeofenceBranch,
   type NearestGeofenceBranch,
 } from '../domain/branches';
 import {
@@ -70,10 +69,6 @@ function timestampDate(value: unknown): Date | undefined {
   return undefined;
 }
 
-function sameOrAfter(date: string, boundary: string): boolean {
-  return compareDateStrings(date, boundary) >= 0;
-}
-
 export class AttendanceService {
   private readonly store: AttendanceStore;
   private readonly employees: AttendanceEmployeeStore;
@@ -104,7 +99,7 @@ export class AttendanceService {
     const now = this.now();
     const date = istDateOf(now);
     const employee = await this.requireEligibleEmployee(caller.uid, date);
-    const { settings, allowedBranches, nearest } = await this.getLocationContext(
+    const { settings, allowedBranches, nearest, inside } = await this.getLocationContext(
       employee,
       input,
     );
@@ -130,12 +125,7 @@ export class AttendanceService {
       await this.rejectAttempt(caller.uid, 'in', date, input, 'MOCK_LOCATION', nearest);
       throw new AppError(422, 'MOCK_LOCATION', 'Mock locations are not accepted.');
     }
-    if (!nearest || !evaluateGeofence({
-      lat: input.lat,
-      lng: input.lng,
-      accuracy: input.accuracy,
-      branches: allowedBranches,
-    }).inside) {
+    if (!nearest || !inside) {
       await this.rejectAttempt(caller.uid, 'in', date, input, 'OUTSIDE_GEOFENCE', nearest);
       throw this.outsideGeofenceError(nearest, input.accuracy);
     }
@@ -191,7 +181,7 @@ export class AttendanceService {
     const now = this.now();
     const today = istDateOf(now);
     const employee = await this.requireEligibleEmployee(caller.uid, today);
-    const { settings, allowedBranches, nearest } = await this.getLocationContext(
+    const { settings, allowedBranches, nearest, inside } = await this.getLocationContext(
       employee,
       input,
     );
@@ -219,13 +209,7 @@ export class AttendanceService {
     }
     if (
       settings.enforceCheckoutLocation &&
-      (!nearest ||
-        !evaluateGeofence({
-          lat: input.lat,
-          lng: input.lng,
-          accuracy: input.accuracy,
-          branches: allowedBranches,
-        }).inside)
+      (!nearest || !inside)
     ) {
       await this.rejectAttempt(caller.uid, 'out', today, input, 'OUTSIDE_GEOFENCE', nearest);
       throw this.outsideGeofenceError(nearest, input.accuracy);
@@ -253,7 +237,8 @@ export class AttendanceService {
         if (day?.inTime === undefined || day.outTime !== undefined) continue;
         if (date === yesterday) {
           const inTime = timestampDate(day.inTime);
-          if (!inTime || now.getTime() - inTime.getTime() >= DAY_MS) continue;
+          const elapsed = inTime ? now.getTime() - inTime.getTime() : -1;
+          if (elapsed < 0 || elapsed >= DAY_MS) continue;
         }
         selectedDate = date;
         selectedDay = day;
@@ -268,7 +253,8 @@ export class AttendanceService {
         const closedDay = [todayDay, yesterdayDay].find((day) => {
           if (day?.inTime === undefined || day.outTime === undefined) return false;
           const inTime = timestampDate(day.inTime);
-          return inTime !== undefined && now.getTime() - inTime.getTime() < DAY_MS;
+          const elapsed = inTime ? now.getTime() - inTime.getTime() : -1;
+          return elapsed >= 0 && elapsed < DAY_MS;
         });
         if (closedDay) {
           throw new AppError(409, 'ALREADY_CHECKED_OUT', 'Already checked out for this check-in.');
@@ -325,12 +311,13 @@ export class AttendanceService {
     month: string,
   ): Promise<Record<string, unknown>> {
     this.requireEmployee(caller);
-    const today = istDateOf(this.now());
+    const now = this.now();
+    const today = istDateOf(now);
     const document = await this.store.getAttendance(attendanceId(month, caller.uid));
     return {
       month,
       today,
-      serverTime: this.now(),
+      serverTime: now,
       days: document?.days ?? {},
     };
   }
@@ -349,7 +336,7 @@ export class AttendanceService {
     if (!employee) {
       throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee was not found.');
     }
-    if (employee.status !== 'active') {
+    if (employee.role !== 'employee' || employee.status !== 'active') {
       throw new AppError(403, 'FORBIDDEN', 'Inactive employees cannot record attendance.');
     }
     if (typeof employee.doj === 'string' && compareDateStrings(employee.doj, today) > 0) {
@@ -368,6 +355,7 @@ export class AttendanceService {
     settings: Awaited<ReturnType<AttendanceSettingsReader>>;
     allowedBranches: AttendanceBranch[];
     nearest: NearestGeofenceBranch | null;
+    inside: boolean;
   }> {
     const [settings, branches] = await Promise.all([
       this.readSettings(),
@@ -383,9 +371,14 @@ export class AttendanceService {
       lat: input.lat,
       lng: input.lng,
       accuracy: input.accuracy,
-      branches: allowedBranches as GeofenceBranch[],
+      branches: allowedBranches,
     });
-    return { settings, allowedBranches, nearest: evaluation.nearestBranch };
+    return {
+      settings,
+      allowedBranches,
+      nearest: evaluation.nearestBranch,
+      inside: evaluation.inside,
+    };
   }
 
   private async rejectAttempt(

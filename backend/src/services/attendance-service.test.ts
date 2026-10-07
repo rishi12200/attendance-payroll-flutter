@@ -6,7 +6,6 @@ import type { EmployeeRecord } from './employee-service';
 import type {
   AttendanceBranch,
   AttendanceDay,
-  AttendanceDocument,
   AttendanceEmployeeStore,
   AttendanceStore,
   AttendanceTransaction,
@@ -48,10 +47,11 @@ class FakeAttendanceStore implements AttendanceStore {
   readonly checkins: CheckinRecord[] = [];
   settings: Record<string, unknown> | undefined;
   failRejectedWrites = false;
+  clock = currentTime;
   private transactionTail: Promise<void> = Promise.resolve();
 
   serverTimestamp() {
-    return Timestamp.fromDate(currentTime);
+    return Timestamp.fromDate(this.clock);
   }
 
   async getAttendance(id: string) {
@@ -126,6 +126,8 @@ function service(options: {
 } = {}) {
   const store = options.store ?? new FakeAttendanceStore();
   const employees = options.employees ?? new FakeEmployeeStore();
+  const now = options.now ?? (() => currentTime);
+  store.clock = now();
   store.settings = options.settings;
   return {
     store,
@@ -134,7 +136,7 @@ function service(options: {
       store,
       employees,
       branches: { listBranches: async () => options.branches ?? [branch] },
-      now: options.now ?? (() => currentTime),
+      now,
       logRejectedWriteFailure: options.logFailure,
     }),
   };
@@ -240,6 +242,9 @@ test('employee eligibility, admin access, and payroll locking are enforced', asy
   const inactive = service();
   inactive.employees.current = { ...employee, status: 'inactive' };
   await expectError(inactive.service.checkIn(caller, input), 403, 'FORBIDDEN');
+  const adminProfile = service();
+  adminProfile.employees.current = { ...employee, role: 'admin' };
+  await expectError(adminProfile.service.checkIn(caller, input), 403, 'FORBIDDEN');
   const notJoined = service();
   notJoined.employees.current = { ...employee, doj: '2026-10-11' };
   await expectError(notJoined.service.checkIn(caller, input), 422, 'NOT_YET_JOINED');
@@ -278,16 +283,35 @@ test('checkout finds yesterday across a month boundary and rejects missing punch
     days: {
       '2026-10-31': {
         status: 'P',
-        inTime: Timestamp.fromDate(new Date('2026-10-31T20:00:00.000Z')),
+        inTime: Timestamp.fromDate(new Date('2026-10-31T17:00:00.000Z')),
       },
     },
   });
   const result = await attendance.checkOut(caller, input);
   assert.equal(result.date, '2026-10-31');
-  assert.equal(result.workedMinutes, 300);
+  assert.equal(result.workedMinutes, 480);
 
   const empty = service();
   await expectError(empty.service.checkOut(caller, input), 409, 'NOT_CHECKED_IN');
+});
+
+test('checkout after IST midnight remains on the late-night check-in day', async () => {
+  const { store, service: attendance } = service({
+    now: () => new Date('2026-10-10T18:30:00.000Z'),
+  });
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1',
+    month: '2026-10',
+    days: {
+      '2026-10-10': {
+        status: 'P',
+        inTime: Timestamp.fromDate(new Date('2026-10-10T18:25:00.000Z')),
+      },
+    },
+  });
+  const result = await attendance.checkOut(caller, input);
+  assert.equal(result.date, '2026-10-10');
+  assert.equal(result.workedMinutes, 5);
 });
 
 test('checkout location enforcement defaults off and can be enabled', async () => {
@@ -312,6 +336,16 @@ test('checkout location enforcement defaults off and can be enabled', async () =
     enforced.service.checkOut(caller, { ...input, lat: 13.02 }),
     422,
     'OUTSIDE_GEOFENCE',
+  );
+
+  const inaccurate = service({
+    settings: { enforceCheckoutLocation: true, maxAccuracyMeters: 10 },
+  });
+  setupOpenPunch(inaccurate.store);
+  await expectError(
+    inaccurate.service.checkOut(caller, { ...input, accuracy: 11 }),
+    422,
+    'ACCURACY_TOO_LOW',
   );
 });
 
