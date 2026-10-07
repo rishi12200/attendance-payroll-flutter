@@ -83,20 +83,20 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ),
                 ],
               ),
+            ],
+          ),
+          GoRoute(
+            path: '/admin/branches',
+            builder: (context, state) => const BranchListScreen(),
+            routes: [
               GoRoute(
-                path: '/admin/branches',
-                builder: (context, state) => const BranchListScreen(),
-                routes: [
-                  GoRoute(
-                    path: 'new',
-                    builder: (context, state) => const BranchFormScreen(),
-                  ),
-                  GoRoute(
-                    path: ':id',
-                    builder: (context, state) =>
-                        BranchFormScreen(id: state.pathParameters['id']!),
-                  ),
-                ],
+                path: 'new',
+                builder: (context, state) => const BranchFormScreen(),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) =>
+                    BranchFormScreen(id: state.pathParameters['id']!),
               ),
             ],
           ),
