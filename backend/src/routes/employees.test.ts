@@ -263,6 +263,8 @@ test('employee can GET self but not another employee', async () => {
   assert.equal('editedAt' in own.body, false);
   assert.equal('currentMonthlyCtcPaise' in own.body, false);
   assert.equal('monthlyCtcPaise' in own.body, false);
+  assert.equal(own.body.primaryBranchId, null);
+  assert.deepEqual(own.body.allowedBranchIds, []);
 
   const other = await request(app, '/employees/employee-2', employeeTokenOptions);
   assert.equal(other.status, 403);
@@ -296,6 +298,32 @@ test('PATCH passes path params and validated body independently', async () => {
   assert.equal(result.body.email, activeEmployee.email);
   assert.equal(result.body.editedBy, 'admin-1');
   assert.equal(result.body.updatedAt, '2026-10-08T10:00:00.000Z');
+});
+
+test('employee PATCH accepts branch assignments without losing the path ID', async () => {
+  const { app, updates } = makeApp(true);
+  const result = await request(app, '/employees/employee-1', {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      primaryBranchId: 'branch-1',
+      allowedBranchIds: ['branch-2'],
+    }),
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(updates, [
+    {
+      uid: 'employee-1',
+      changes: {
+        primaryBranchId: 'branch-1',
+        allowedBranchIds: ['branch-2'],
+      },
+      editedBy: 'admin-1',
+    },
+  ]);
+  assert.equal(result.body.primaryBranchId, 'branch-1');
+  assert.deepEqual(result.body.allowedBranchIds, ['branch-2']);
 });
 
 test('salary and deactivate routes preserve validated params alongside their bodies', async () => {

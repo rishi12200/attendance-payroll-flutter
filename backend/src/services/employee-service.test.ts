@@ -9,6 +9,7 @@ import type {
   SalaryRevision,
 } from './employee-service';
 import { EmployeeService } from './employee-service';
+import type { BranchRecord, BranchStore } from './branch-service';
 
 class FakeEmployeeAuth implements EmployeeAuth {
   readonly accounts = new Map<
@@ -60,10 +61,11 @@ class FakeEmployeeAuth implements EmployeeAuth {
   }
 }
 
-class FakeEmployeeStore implements EmployeeStore {
+class FakeEmployeeStore implements EmployeeStore, BranchStore {
   counter = 0;
   readonly employees = new Map<string, EmployeeRecord>();
   readonly salaries = new Map<string, SalaryRevision>();
+  readonly branches = new Map<string, BranchRecord>();
   failTransaction = false;
   failEmployeeUpdate = false;
   readonly events: string[] = [];
@@ -122,6 +124,26 @@ class FakeEmployeeStore implements EmployeeStore {
   async getSalaryRevision(id: string) {
     return this.salaries.get(id);
   }
+
+  async listBranches() {
+    return [...this.branches.values()];
+  }
+
+  async getBranch(id: string) {
+    return this.branches.get(id);
+  }
+
+  async createBranch(values: Record<string, unknown>) {
+    const id = `branch-${this.branches.size + 1}`;
+    this.branches.set(id, { ...values, id } as BranchRecord);
+    return id;
+  }
+
+  async updateBranch(id: string, values: Record<string, unknown>) {
+    const branch = this.branches.get(id);
+    if (!branch) throw new Error('missing branch');
+    this.branches.set(id, { ...branch, ...values });
+  }
 }
 
 function employeeService(options: {
@@ -137,6 +159,7 @@ function employeeService(options: {
     service: new EmployeeService({
       auth,
       store,
+      branches: store,
       today: () => options.today ?? '2026-10-07',
     }),
   };
@@ -166,6 +189,18 @@ function employeeRecord(
   };
 }
 
+function branchRecord(id: string, status: 'active' | 'inactive' = 'active'): BranchRecord {
+  return {
+    id,
+    name: `Branch ${id}`,
+    state: 'Tamil Nadu',
+    lat: 13,
+    lng: 80,
+    radiusMeters: 100,
+    status,
+  };
+}
+
 async function expectAppError(
   promise: Promise<unknown>,
   status: number,
@@ -188,6 +223,8 @@ test('creates Auth claim, employee profile, first salary, and never returns pass
   assert.equal(result.role, 'employee');
   assert.equal(result.status, 'active');
   assert.equal('tempPassword' in result, false);
+  assert.equal(result.primaryBranchId, null);
+  assert.deepEqual(result.allowedBranchIds, []);
   assert.deepEqual(result, await store.getEmployee('uid-1'));
   assert.equal(result.createdAt, store.employees.get('uid-1')?.createdAt);
   assert.equal(result.updatedAt, store.employees.get('uid-1')?.updatedAt);
@@ -229,6 +266,65 @@ test('increments the transaction counter to EMP001 then EMP002', async () => {
   assert.equal(first.empCode, 'EMP001');
   assert.equal(second.empCode, 'EMP002');
   assert.equal(store.counter, 2);
+});
+
+test('validates employee branch assignments before creating Auth users', async () => {
+  const { auth, store, service } = employeeService();
+  store.branches.set('inactive-branch', branchRecord('inactive-branch', 'inactive'));
+
+  await expectAppError(
+    service.createEmployee({
+      ...employeeInput(),
+      primaryBranchId: 'missing-branch',
+    }),
+    422,
+    'BRANCH_NOT_ASSIGNABLE',
+  );
+  await expectAppError(
+    service.createEmployee({
+      ...employeeInput(),
+      allowedBranchIds: ['inactive-branch'],
+    }),
+    422,
+    'BRANCH_NOT_ASSIGNABLE',
+  );
+  assert.equal(auth.accounts.size, 0);
+});
+
+test('auto-includes primary branch and permits clearing all assignments', async () => {
+  const { store, service } = employeeService();
+  store.branches.set('branch-1', branchRecord('branch-1'));
+  const created = await service.createEmployee({
+    ...employeeInput(),
+    primaryBranchId: 'branch-1',
+    allowedBranchIds: [],
+  });
+  assert.equal(created.primaryBranchId, 'branch-1');
+  assert.deepEqual(created.allowedBranchIds, ['branch-1']);
+
+  const cleared = await service.updateEmployee(
+    created.uid as string,
+    { primaryBranchId: null, allowedBranchIds: [] },
+    'admin-uid',
+  );
+  assert.equal(cleared.primaryBranchId, null);
+  assert.deepEqual(cleared.allowedBranchIds, []);
+});
+
+test('rejects duplicate branch assignments on employee updates', async () => {
+  const { store, service } = employeeService();
+  store.branches.set('branch-1', branchRecord('branch-1'));
+  const created = await service.createEmployee(employeeInput());
+
+  await expectAppError(
+    service.updateEmployee(
+      created.uid as string,
+      { allowedBranchIds: ['branch-1', 'branch-1'] },
+      'admin-uid',
+    ),
+    422,
+    'DUPLICATE_BRANCH_ASSIGNMENT',
+  );
 });
 
 test('returns 409 for a duplicate salary effective date', async () => {

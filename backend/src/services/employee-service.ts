@@ -1,6 +1,12 @@
 import { AppError } from '../errors/app-error';
 import { compareDateStrings, isDateBefore, todayIST } from '../domain/dates';
 import { formatEmpCode } from '../domain/emp-code';
+import {
+  normalizeEmployeeAssignment,
+  validateEmployeeAssignment,
+  type BranchStore,
+  type EmployeeBranchAssignment,
+} from './branch-service';
 
 export type EmployeeStatus = 'active' | 'inactive';
 export type EmployeeRole = 'admin' | 'employee';
@@ -10,13 +16,24 @@ export type EmployeeRecord = Record<string, unknown> & {
   status: EmployeeStatus;
   doj?: string;
   dol?: string | null;
+  primaryBranchId?: string | null;
+  allowedBranchIds?: string[];
 };
 
 export function toEmployeeDto(
   employee: EmployeeRecord,
   viewerRole: EmployeeRole,
 ): EmployeeRecord {
-  const dto = { ...employee };
+  const dto: EmployeeRecord = {
+    ...employee,
+    primaryBranchId:
+      typeof employee.primaryBranchId === 'string'
+        ? employee.primaryBranchId
+        : null,
+    allowedBranchIds: Array.isArray(employee.allowedBranchIds)
+      ? employee.allowedBranchIds
+      : [],
+  };
   if (viewerRole === 'employee') {
     for (const field of Object.keys(dto)) {
       if (field === 'editedBy' || field === 'editedAt' || /salary|ctc/i.test(field)) {
@@ -34,7 +51,7 @@ export interface SalaryRevision {
   [key: string]: unknown;
 }
 
-export interface CreateEmployeeInput {
+export interface CreateEmployeeInput extends EmployeeBranchAssignment {
   name: string;
   email: string;
   tempPassword: string;
@@ -75,21 +92,27 @@ export interface EmployeeStore {
 export interface EmployeeServiceDependencies {
   auth: EmployeeAuth;
   store: EmployeeStore;
+  branches: BranchStore;
   today?: () => string;
 }
 
 export class EmployeeService {
   private readonly auth: EmployeeAuth;
   private readonly store: EmployeeStore;
+  private readonly branches: BranchStore;
   private readonly today: () => string;
 
   constructor(dependencies: EmployeeServiceDependencies) {
     this.auth = dependencies.auth;
     this.store = dependencies.store;
+    this.branches = dependencies.branches;
     this.today = dependencies.today ?? todayIST;
   }
 
   async createEmployee(input: CreateEmployeeInput): Promise<EmployeeRecord> {
+    const assignment = normalizeEmployeeAssignment(undefined, input);
+    await validateEmployeeAssignment(assignment, this.branches);
+
     let uid: string;
     try {
       ({ uid } = await this.auth.createUser({
@@ -126,6 +149,8 @@ export class EmployeeService {
           role: 'employee',
           status: 'active',
           doj: input.doj,
+          primaryBranchId: assignment.primaryBranchId,
+          allowedBranchIds: assignment.allowedBranchIds,
           createdAt: timestamp,
           updatedAt: timestamp,
         };
@@ -202,8 +227,51 @@ export class EmployeeService {
     if (existing.role === 'admin') {
       throw new AppError(403, 'ADMIN_PROFILE_PROTECTED', 'Admin profiles cannot be edited here.');
     }
+    const hasAssignmentUpdate =
+      Object.hasOwn(changes, 'primaryBranchId') ||
+      Object.hasOwn(changes, 'allowedBranchIds');
+    let assignmentValues: EmployeeBranchAssignment = {};
+    if (hasAssignmentUpdate) {
+      const branchChanges: EmployeeBranchAssignment = {};
+      if (Object.hasOwn(changes, 'primaryBranchId')) {
+        if (changes.primaryBranchId === null) {
+          branchChanges.primaryBranchId = null;
+        } else if (typeof changes.primaryBranchId === 'string') {
+          branchChanges.primaryBranchId = changes.primaryBranchId.trim();
+        } else {
+          throw new AppError(
+            422,
+            'INVALID_BRANCH_ASSIGNMENT',
+            'Primary branch ID must be a string or null.',
+          );
+        }
+      }
+      if (Object.hasOwn(changes, 'allowedBranchIds')) {
+        if (!Array.isArray(changes.allowedBranchIds)) {
+          throw new AppError(
+            422,
+            'INVALID_BRANCH_ASSIGNMENT',
+            'Allowed branch IDs must be strings.',
+          );
+        }
+        branchChanges.allowedBranchIds = changes.allowedBranchIds.map((id) => {
+          if (typeof id !== 'string') {
+            throw new AppError(
+              422,
+              'INVALID_BRANCH_ASSIGNMENT',
+              'Allowed branch IDs must be strings.',
+            );
+          }
+          return id.trim();
+        });
+      }
+      const assignment = normalizeEmployeeAssignment(existing, branchChanges);
+      await validateEmployeeAssignment(assignment, this.branches);
+      assignmentValues = assignment;
+    }
     const values = {
       ...changes,
+      ...assignmentValues,
       updatedAt: this.store.serverTimestamp(),
       editedBy,
       editedAt: this.store.serverTimestamp(),
