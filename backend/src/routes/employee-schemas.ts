@@ -37,9 +37,11 @@ export const listEmployeesQuerySchema = z.strictObject({
   status: z.enum(['active', 'inactive', 'all']).default('active'),
 });
 
-export const deactivateEmployeeSchema = z.strictObject({
-  dol: dateString.optional(),
-});
+export const deactivateEmployeeSchema = z
+  .strictObject({
+    dol: dateString.optional(),
+  })
+  .default({});
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 export type PatchEmployeeInput = z.infer<typeof patchEmployeeSchema>;

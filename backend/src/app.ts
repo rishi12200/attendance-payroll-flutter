@@ -4,8 +4,11 @@ import { healthRouter } from './routes/health';
 import { createMeRouter, type MeRouteDependencies } from './routes/me';
 import { AppError } from './errors/app-error';
 import { errorHandler } from './middleware/error-handler';
+import { createEmployeesRouter, type EmployeeOperations } from './routes/employees';
 
-export function createApp(dependencies: MeRouteDependencies) {
+export function createApp(
+  dependencies: MeRouteDependencies & { employees?: EmployeeOperations },
+) {
   const app = express();
 
   app.use(cors());
@@ -13,6 +16,15 @@ export function createApp(dependencies: MeRouteDependencies) {
 
   app.use('/health', healthRouter);
   app.use('/me', createMeRouter(dependencies));
+  if (dependencies.employees) {
+    app.use(
+      '/employees',
+      createEmployeesRouter({
+        verifyIdToken: dependencies.verifyIdToken,
+        employees: dependencies.employees,
+      }),
+    );
+  }
 
   app.use((_req, _res, next) => {
     next(new AppError(404, 'NOT_FOUND', 'Not found.'));
