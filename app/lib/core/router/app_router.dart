@@ -10,6 +10,8 @@ import '../../features/employees/presentation/add_employee_screen.dart';
 import '../../features/employees/presentation/employee_detail_screen.dart';
 import '../../features/employees/presentation/employee_edit_screen.dart';
 import '../../features/employees/presentation/employee_list_screen.dart';
+import '../../features/branches/presentation/branch_form_screen.dart';
+import '../../features/branches/presentation/branch_list_screen.dart';
 import '../auth/auth_providers.dart';
 import 'router_redirect.dart';
 
@@ -78,6 +80,21 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) => EmployeeEditScreen(
                       id: state.pathParameters['id']!,
                     ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: '/admin/branches',
+                builder: (context, state) => const BranchListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) => const BranchFormScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) =>
+                        BranchFormScreen(id: state.pathParameters['id']!),
                   ),
                 ],
               ),

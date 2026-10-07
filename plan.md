@@ -373,7 +373,7 @@ Each step ends with something you can demo and test. Do one step at a time and c
 
 ### Step 3: Branches
 - [x] Branch endpoints
-- [ ] Flutter branch form with "use my current location" and radius
+- [x] Flutter branch form with "use my current location" and radius
 - [x] Assign branches to employees
 
 ### Step 4: Check-in and check-out (the core)

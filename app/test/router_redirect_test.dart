@@ -99,6 +99,28 @@ void main() {
     );
     expect(
       routerRedirect(
+        location: '/admin/branches',
+        authLoading: false,
+        isSignedIn: true,
+        profileLoading: false,
+        profileError: false,
+        profile: employee,
+      ),
+      '/employee',
+    );
+    expect(
+      routerRedirect(
+        location: '/admin/branches/branch-1',
+        authLoading: false,
+        isSignedIn: true,
+        profileLoading: false,
+        profileError: false,
+        profile: employee,
+      ),
+      '/employee',
+    );
+    expect(
+      routerRedirect(
         location: '/administrator',
         authLoading: false,
         isSignedIn: true,
