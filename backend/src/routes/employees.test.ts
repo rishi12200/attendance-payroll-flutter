@@ -17,6 +17,11 @@ const activeEmployee: EmployeeRecord = {
   status: 'active',
   doj: '2026-10-01',
   createdAt: Timestamp.fromDate(new Date('2026-10-07T10:00:00.000Z')),
+  designation: 'Associate',
+  editedBy: 'admin-1',
+  editedAt: Timestamp.fromDate(new Date('2026-10-07T10:00:00.000Z')),
+  currentMonthlyCtcPaise: 2500000,
+  monthlyCtcPaise: 2500000,
 };
 
 function identity(uid: string, role: string): DecodedIdToken {
@@ -62,26 +67,32 @@ async function request(
 
 function makeApp(asAdmin = false, updateError?: Error) {
   const calls: string[] = [];
+  let employeeState: EmployeeRecord = { ...activeEmployee };
   const updates: Array<{
     uid: string;
     changes: Record<string, unknown>;
     editedBy: string;
   }> = [];
   const operations: EmployeeOperations = {
-    createEmployee: async () => {
+    createEmployee: async (input) => {
       calls.push('create');
-      return activeEmployee;
+      employeeState = {
+        ...activeEmployee,
+        name: input.name,
+        email: input.email,
+      };
+      return employeeState;
     },
     listEmployees: async () => {
       calls.push('list');
-      return [activeEmployee];
+      return [employeeState];
     },
     getEmployee: async (uid, caller) => {
       calls.push(`get:${uid}`);
       if (caller.role !== 'admin' && caller.uid !== uid) {
         throw new AppError(403, 'FORBIDDEN', 'Employees may only access their own profile.');
       }
-      return activeEmployee;
+      return employeeState;
     },
     updateEmployee: async (uid, changes, editedBy) => {
       calls.push('update');
@@ -90,13 +101,14 @@ function makeApp(asAdmin = false, updateError?: Error) {
         throw new Error('route passed an invalid employee id');
       }
       if (updateError) throw updateError;
-      return {
-        ...activeEmployee,
+      employeeState = {
+        ...employeeState,
         ...changes,
         updatedAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00.000Z')),
         editedBy,
         editedAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00.000Z')),
       };
+      return employeeState;
     },
     addSalaryRevision: async (uid, effectiveFrom, monthlyCtcPaise) => {
       calls.push('add-salary');
@@ -106,13 +118,29 @@ function makeApp(asAdmin = false, updateError?: Error) {
       calls.push('list-salary');
       return [{ empId: uid, effectiveFrom: '2026-10-01', monthlyCtcPaise: 2500000 }];
     },
-    deactivateEmployee: async () => {
+    deactivateEmployee: async (_uid, _callerUid, dol) => {
       calls.push('deactivate');
-      return { ...activeEmployee, status: 'inactive' };
+      employeeState = {
+        ...employeeState,
+        status: 'inactive',
+        dol: dol ?? '2026-10-07',
+        editedBy: 'admin-1',
+        editedAt: Timestamp.fromDate(new Date('2026-10-09T10:00:00.000Z')),
+        updatedAt: Timestamp.fromDate(new Date('2026-10-09T10:00:00.000Z')),
+      };
+      return employeeState;
     },
     reactivateEmployee: async () => {
       calls.push('reactivate');
-      return activeEmployee;
+      employeeState = {
+        ...employeeState,
+        status: 'active',
+        dol: null,
+        editedBy: 'admin-1',
+        editedAt: Timestamp.fromDate(new Date('2026-10-10T10:00:00.000Z')),
+        updatedAt: Timestamp.fromDate(new Date('2026-10-10T10:00:00.000Z')),
+      };
+      return employeeState;
     },
   };
 
@@ -142,6 +170,9 @@ const employeeTokenOptions = {
 const jsonHeaders = {
   ...employeeTokenOptions.headers,
   'content-type': 'application/json',
+};
+const adminTokenOptions = {
+  headers: { authorization: 'Bearer admin-token' },
 };
 
 test('requires authentication for employee endpoints', async () => {
@@ -215,6 +246,10 @@ test('employee can GET self but not another employee', async () => {
   assert.equal(own.status, 200);
   assert.equal(own.body.uid, 'employee-1');
   assert.equal(own.body.createdAt, '2026-10-07T10:00:00.000Z');
+  assert.equal('editedBy' in own.body, false);
+  assert.equal('editedAt' in own.body, false);
+  assert.equal('currentMonthlyCtcPaise' in own.body, false);
+  assert.equal('monthlyCtcPaise' in own.body, false);
 
   const other = await request(app, '/employees/employee-2', employeeTokenOptions);
   assert.equal(other.status, 403);
@@ -248,6 +283,49 @@ test('PATCH passes path params and validated body independently', async () => {
   assert.equal(result.body.email, activeEmployee.email);
   assert.equal(result.body.editedBy, 'admin-1');
   assert.equal(result.body.updatedAt, '2026-10-08T10:00:00.000Z');
+});
+
+test('employee write responses match the subsequent admin GET', async () => {
+  const { app } = makeApp(true);
+  const compareWithGet = async (
+    writePath: string,
+    method: string,
+    body?: Record<string, unknown>,
+  ) => {
+    const write = await request(app, writePath, {
+      method,
+      headers: jsonHeaders,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    assert.equal(write.status, method === 'POST' && writePath === '/employees' ? 201 : 200);
+    const get = await request(app, '/employees/employee-1', adminTokenOptions);
+    assert.equal(get.status, 200);
+    assert.deepEqual(write.body, get.body);
+  };
+
+  await compareWithGet('/employees', 'POST', {
+    name: 'Created Employee',
+    email: 'created@example.com',
+    tempPassword: 'temporary-123',
+    doj: '2026-10-01',
+    monthlyCtcPaise: 2500000,
+  });
+  await compareWithGet('/employees/employee-1', 'PATCH', {
+    designation: 'Senior Associate',
+  });
+  await compareWithGet('/employees/employee-1/deactivate', 'POST', {});
+  await compareWithGet('/employees/employee-1/reactivate', 'POST');
+});
+
+test('admin employee list retains the complete employee DTO', async () => {
+  const { app } = makeApp(true);
+  const result = await request(app, '/employees', adminTokenOptions);
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body[0].designation, 'Associate');
+  assert.equal(result.body[0].createdAt, '2026-10-07T10:00:00.000Z');
+  assert.equal(result.body[0].editedBy, 'admin-1');
+  assert.equal(result.body[0].editedAt, '2026-10-07T10:00:00.000Z');
 });
 
 test('logs unexpected errors with request metadata and stack, not body data', async () => {

@@ -3,7 +3,11 @@ import type { IdTokenVerifier } from '../middleware/auth';
 import { createAuthMiddleware, requireRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { serialize } from '../services/serialize';
-import type { EmployeeRecord, SalaryRevision } from '../services/employee-service';
+import {
+  toEmployeeDto,
+  type EmployeeRecord,
+  type SalaryRevision,
+} from '../services/employee-service';
 import {
   createEmployeeSchema,
   deactivateEmployeeSchema,
@@ -50,17 +54,23 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
   const authenticate = createAuthMiddleware(dependencies.verifyIdToken);
   const admin = requireRole('admin');
   const signedIn = requireRole('admin', 'employee');
+  const getAdminEmployee = (uid: string, callerUid: string) =>
+    dependencies.employees.getEmployee(uid, { uid: callerUid, role: 'admin' });
 
   router.post(
     '/',
     authenticate,
     admin,
     validate(createEmployeeSchema),
-    async (_req, res) => {
-      const employee = await dependencies.employees.createEmployee(
+    async (req, res) => {
+      const created = await dependencies.employees.createEmployee(
         res.locals.validatedParts.body,
       );
-      res.status(201).json(serialize(employee));
+      if (typeof created.uid !== 'string') {
+        throw new Error('Created employee record is missing its uid.');
+      }
+      const employee = await getAdminEmployee(created.uid, req.user!.uid);
+      res.status(201).json(serialize(toEmployeeDto(employee, 'admin')));
     },
   );
 
@@ -71,7 +81,13 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     validate(listEmployeesQuerySchema, 'query'),
     async (_req, res) => {
       const { status } = res.locals.validatedParts.query;
-      res.json(serialize(await dependencies.employees.listEmployees(status)));
+      res.json(
+        serialize(
+          (await dependencies.employees.listEmployees(status)).map((employee) =>
+            toEmployeeDto(employee, 'admin'),
+          ),
+        ),
+      );
     },
   );
 
@@ -117,12 +133,13 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     validate(patchEmployeeSchema),
     async (req, res) => {
       const { id } = res.locals.validatedParts.params;
-      const employee = await dependencies.employees.updateEmployee(
+      await dependencies.employees.updateEmployee(
         id,
         res.locals.validatedParts.body,
         req.user!.uid,
       );
-      res.json(serialize(employee));
+      const employee = await getAdminEmployee(id, req.user!.uid);
+      res.json(serialize(toEmployeeDto(employee, 'admin')));
     },
   );
 
@@ -135,11 +152,9 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     async (req, res) => {
       const { id } = res.locals.validatedParts.params;
       const { dol } = res.locals.validatedParts.body;
-      res.json(
-        serialize(
-          await dependencies.employees.deactivateEmployee(id, req.user!.uid, dol),
-        ),
-      );
+      await dependencies.employees.deactivateEmployee(id, req.user!.uid, dol);
+      const employee = await getAdminEmployee(id, req.user!.uid);
+      res.json(serialize(toEmployeeDto(employee, 'admin')));
     },
   );
 
@@ -150,9 +165,9 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     validate(employeeIdParamsSchema, 'params'),
     async (req, res) => {
       const { id } = res.locals.validatedParts.params;
-      res.json(
-        serialize(await dependencies.employees.reactivateEmployee(id, req.user!.uid)),
-      );
+      await dependencies.employees.reactivateEmployee(id, req.user!.uid);
+      const employee = await getAdminEmployee(id, req.user!.uid);
+      res.json(serialize(toEmployeeDto(employee, 'admin')));
     },
   );
 
@@ -165,10 +180,13 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
       const { id } = res.locals.validatedParts.params;
       res.json(
         serialize(
-          await dependencies.employees.getEmployee(id, {
-            uid: req.user!.uid,
-            role: req.user!.role,
-          }),
+          toEmployeeDto(
+            await dependencies.employees.getEmployee(id, {
+              uid: req.user!.uid,
+              role: req.user!.role,
+            }),
+            req.user!.role === 'employee' ? 'employee' : 'admin',
+          ),
         ),
       );
     },

@@ -103,7 +103,8 @@ class FakeEmployeeStore implements EmployeeStore {
   }
 
   async getEmployee(uid: string) {
-    return this.employees.get(uid);
+    const employee = this.employees.get(uid);
+    return employee ? { ...employee, uid } : undefined;
   }
 
   async getSalaryHistory(uid: string) {
@@ -187,8 +188,9 @@ test('creates Auth claim, employee profile, first salary, and never returns pass
   assert.equal(result.role, 'employee');
   assert.equal(result.status, 'active');
   assert.equal('tempPassword' in result, false);
-  assert.equal(typeof result.createdAt, 'string');
-  assert.equal(new Date(result.createdAt as string).toISOString(), result.createdAt);
+  assert.deepEqual(result, await store.getEmployee('uid-1'));
+  assert.equal(result.createdAt, store.employees.get('uid-1')?.createdAt);
+  assert.equal(result.updatedAt, store.employees.get('uid-1')?.updatedAt);
   assert.deepEqual(auth.accounts.get('uid-1')?.claims, { role: 'employee' });
   assert.deepEqual(store.salaries.get('uid-1_2026-10-01'), {
     empId: 'uid-1',
@@ -288,7 +290,8 @@ test('patch updates only requested fields and records editor and timestamps', as
     { designation: 'Senior Associate' },
     'admin-uid',
   );
-  const persisted = store.employees.get('employee-1')!;
+  const persisted = await store.getEmployee('employee-1');
+  assert.ok(persisted);
 
   assert.equal(result.designation, 'Senior Associate');
   assert.equal(result.name, 'Original Name');
@@ -301,6 +304,7 @@ test('patch updates only requested fields and records editor and timestamps', as
   assert.equal(persisted.editedBy, 'admin-uid');
   assert.equal(typeof persisted.updatedAt, 'string');
   assert.equal(typeof persisted.editedAt, 'string');
+  assert.deepEqual(result, persisted);
 });
 
 test('disables then revokes before writing inactive status and DOL', async () => {
@@ -317,6 +321,9 @@ test('disables then revokes before writing inactive status and DOL', async () =>
   assert.deepEqual(store.events, ['update:uid-1:inactive']);
   assert.equal(result.status, 'inactive');
   assert.equal(result.dol, '2026-10-07');
+  assert.deepEqual(result, await store.getEmployee(created.uid as string));
+  assert.equal(result.createdAt, created.createdAt);
+  assert.equal(result.editedBy, 'admin-uid');
 });
 
 test('leaves Auth disabled if the Firestore deactivation update fails', async () => {
@@ -384,6 +391,8 @@ test('reactivates the Auth user and clears DOL', async () => {
   assert.equal(auth.events.at(-1), `disabled:${uid}:false`);
   assert.equal(result.status, 'active');
   assert.equal(result.dol, null);
+  assert.deepEqual(result, await store.getEmployee(uid));
+  assert.equal(result.editedBy, 'admin-uid');
 });
 
 test('only admins receive current salary and employees can read only themselves', async () => {

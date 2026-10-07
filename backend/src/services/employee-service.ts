@@ -5,11 +5,27 @@ import { formatEmpCode } from '../domain/emp-code';
 export type EmployeeStatus = 'active' | 'inactive';
 export type EmployeeRole = 'admin' | 'employee';
 export type EmployeeRecord = Record<string, unknown> & {
+  uid?: string;
   role: EmployeeRole;
   status: EmployeeStatus;
   doj?: string;
   dol?: string | null;
 };
+
+export function toEmployeeDto(
+  employee: EmployeeRecord,
+  viewerRole: EmployeeRole,
+): EmployeeRecord {
+  const dto = { ...employee };
+  if (viewerRole === 'employee') {
+    for (const field of Object.keys(dto)) {
+      if (field === 'editedBy' || field === 'editedAt' || /salary|ctc/i.test(field)) {
+        delete dto[field];
+      }
+    }
+  }
+  return dto;
+}
 
 export interface SalaryRevision {
   empId: string;
@@ -89,7 +105,7 @@ export class EmployeeService {
 
     try {
       await this.auth.setCustomUserClaims(uid, { role: 'employee' });
-      const employee = await this.store.runTransaction(async (transaction) => {
+      await this.store.runTransaction(async (transaction) => {
         const nextSequence = (await transaction.getCounter()) + 1;
         const existingEmployee = await transaction.getEmployee(uid);
         const salaryId = `${uid}_${input.doj}`;
@@ -123,15 +139,7 @@ export class EmployeeService {
           effectiveFrom: input.doj,
           monthlyCtcPaise: input.monthlyCtcPaise,
         });
-        return employeeRecord;
       });
-      const responseTimestamp = new Date().toISOString();
-      return {
-        ...employee,
-        uid,
-        createdAt: responseTimestamp,
-        updatedAt: responseTimestamp,
-      };
     } catch (error) {
       try {
         await this.auth.deleteUser(uid);
@@ -150,6 +158,7 @@ export class EmployeeService {
         `Employee setup failed. The temporary Auth account (${uid}) was removed.`,
       );
     }
+    return this.requireEmployee(uid);
   }
 
   async listEmployees(status: 'active' | 'inactive' | 'all' = 'active') {
@@ -170,7 +179,7 @@ export class EmployeeService {
     }
 
     const employee = await this.requireEmployee(uid);
-    const result: EmployeeRecord = { ...employee, uid };
+    const result: EmployeeRecord = { ...employee };
     if (caller.role === 'admin') {
       const today = this.today();
       const revisions = await this.store.getSalaryHistory(uid);
@@ -200,15 +209,7 @@ export class EmployeeService {
       editedAt: this.store.serverTimestamp(),
     };
     await this.store.updateEmployee(uid, values);
-    const responseTimestamp = new Date().toISOString();
-    return {
-      ...existing,
-      ...changes,
-      updatedAt: responseTimestamp,
-      editedBy,
-      editedAt: responseTimestamp,
-      uid,
-    };
+    return this.requireEmployee(uid);
   }
 
   async addSalaryRevision(
@@ -260,7 +261,7 @@ export class EmployeeService {
     if (employee.doj && isDateBefore(lastDay, employee.doj)) {
       throw new AppError(422, 'INVALID_DOL', 'Date of leaving cannot be before the date of joining.');
     }
-    if (employee.status === 'inactive') return { ...employee, uid };
+    if (employee.status === 'inactive') return this.requireEmployee(uid);
 
     try {
       await this.auth.updateUser(uid, { disabled: true });
@@ -290,16 +291,7 @@ export class EmployeeService {
         `Auth access is disabled for employee ${uid}, but the profile update failed.`,
       );
     }
-    const responseTimestamp = new Date().toISOString();
-    return {
-      ...employee,
-      status: 'inactive',
-      dol: lastDay,
-      updatedAt: responseTimestamp,
-      editedBy: callerUid,
-      editedAt: responseTimestamp,
-      uid,
-    };
+    return this.requireEmployee(uid);
   }
 
   async reactivateEmployee(uid: string, callerUid: string): Promise<EmployeeRecord> {
@@ -323,22 +315,13 @@ export class EmployeeService {
       editedAt: this.store.serverTimestamp(),
     };
     await this.store.updateEmployee(uid, values);
-    const responseTimestamp = new Date().toISOString();
-    return {
-      ...employee,
-      status: 'active',
-      dol: null,
-      updatedAt: responseTimestamp,
-      editedBy: callerUid,
-      editedAt: responseTimestamp,
-      uid,
-    };
+    return this.requireEmployee(uid);
   }
 
   private async requireEmployee(uid: string): Promise<EmployeeRecord> {
     const employee = await this.store.getEmployee(uid);
     if (!employee) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee was not found.');
-    return employee;
+    return { ...employee, uid };
   }
 }
 
