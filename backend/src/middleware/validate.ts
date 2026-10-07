@@ -21,7 +21,8 @@ export function validate<TSchema extends z.ZodType>(
       );
     }
 
-    res.locals.validated = result.data;
+    res.locals.validatedParts ??= {};
+    res.locals.validatedParts[part] = result.data;
     return next();
   };
 }

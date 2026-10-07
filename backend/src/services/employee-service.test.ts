@@ -271,6 +271,38 @@ test('lists salary history newest first', async () => {
   );
 });
 
+test('patch updates only requested fields and records editor and timestamps', async () => {
+  const { store, service } = employeeService();
+  store.employees.set(
+    'employee-1',
+    employeeRecord({
+      name: 'Original Name',
+      phone: '9000000001',
+      designation: 'Associate',
+      doj: '2026-10-01',
+    }),
+  );
+
+  const result = await service.updateEmployee(
+    'employee-1',
+    { designation: 'Senior Associate' },
+    'admin-uid',
+  );
+  const persisted = store.employees.get('employee-1')!;
+
+  assert.equal(result.designation, 'Senior Associate');
+  assert.equal(result.name, 'Original Name');
+  assert.equal(result.phone, '9000000001');
+  assert.equal(result.doj, '2026-10-01');
+  assert.equal(persisted.designation, 'Senior Associate');
+  assert.equal(persisted.name, 'Original Name');
+  assert.equal(persisted.phone, '9000000001');
+  assert.equal(persisted.doj, '2026-10-01');
+  assert.equal(persisted.editedBy, 'admin-uid');
+  assert.equal(typeof persisted.updatedAt, 'string');
+  assert.equal(typeof persisted.editedAt, 'string');
+});
+
 test('disables then revokes before writing inactive status and DOL', async () => {
   const { auth, store, service } = employeeService();
   const created = await service.createEmployee(employeeInput());

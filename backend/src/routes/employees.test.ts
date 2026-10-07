@@ -60,8 +60,13 @@ async function request(
   }
 }
 
-function makeApp() {
+function makeApp(asAdmin = false, updateError?: Error) {
   const calls: string[] = [];
+  const updates: Array<{
+    uid: string;
+    changes: Record<string, unknown>;
+    editedBy: string;
+  }> = [];
   const operations: EmployeeOperations = {
     createEmployee: async () => {
       calls.push('create');
@@ -78,9 +83,20 @@ function makeApp() {
       }
       return activeEmployee;
     },
-    updateEmployee: async () => {
+    updateEmployee: async (uid, changes, editedBy) => {
       calls.push('update');
-      return activeEmployee;
+      updates.push({ uid, changes, editedBy });
+      if (uid !== 'employee-1') {
+        throw new Error('route passed an invalid employee id');
+      }
+      if (updateError) throw updateError;
+      return {
+        ...activeEmployee,
+        ...changes,
+        updatedAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00.000Z')),
+        editedBy,
+        editedAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00.000Z')),
+      };
     },
     addSalaryRevision: async (uid, effectiveFrom, monthlyCtcPaise) => {
       calls.push('add-salary');
@@ -102,9 +118,10 @@ function makeApp() {
 
   return {
     calls,
+    updates,
     app: createApp({
       verifyIdToken: async (value) =>
-        value === 'employee-token'
+        value === 'employee-token' && !asAdmin
           ? identity('employee-1', 'employee')
           : identity('admin-1', 'admin'),
       getProfile: async () => ({
@@ -208,4 +225,55 @@ test('employee can GET self but not another employee', async () => {
       details: {},
     },
   });
+});
+
+test('PATCH passes path params and validated body independently', async () => {
+  const { app, updates } = makeApp(true);
+  const result = await request(app, '/employees/employee-1', {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ designation: 'Senior Associate' }),
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(updates, [
+    {
+      uid: 'employee-1',
+      changes: { designation: 'Senior Associate' },
+      editedBy: 'admin-1',
+    },
+  ]);
+  assert.equal(result.body.designation, 'Senior Associate');
+  assert.equal(result.body.name, activeEmployee.name);
+  assert.equal(result.body.email, activeEmployee.email);
+  assert.equal(result.body.editedBy, 'admin-1');
+  assert.equal(result.body.updatedAt, '2026-10-08T10:00:00.000Z');
+});
+
+test('logs unexpected errors with request metadata and stack, not body data', async () => {
+  const { app } = makeApp(true, new Error('Firestore update failed'));
+  const originalError = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    const result = await request(app, '/employees/employee-1?private=query', {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({ designation: 'PrivateBodyValue' }),
+    });
+    assert.equal(result.status, 500);
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(logged.length, 1);
+  assert.equal(logged[0][0], 'Unhandled API error');
+  assert.deepEqual(logged[0][1], {
+    method: 'PATCH',
+    path: '/employees/employee-1',
+    stack: (logged[0][1] as { stack: string }).stack,
+  });
+  assert.match((logged[0][1] as { stack: string }).stack, /Firestore update failed/);
+  assert.equal(JSON.stringify(logged).includes('PrivateBodyValue'), false);
+  assert.equal(JSON.stringify(logged).includes('private=query'), false);
 });

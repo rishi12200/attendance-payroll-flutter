@@ -10,7 +10,7 @@ function isMalformedJsonError(error: unknown): boolean {
   );
 }
 
-export const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
+export const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
   if (res.headersSent) {
     return next(error);
   }
@@ -35,7 +35,11 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
     });
   }
 
-  console.error('Unhandled API error');
+  console.error('Unhandled API error', {
+    method: req.method,
+    path: req.path,
+    stack: error instanceof Error ? error.stack : undefined,
+  });
   return res.status(500).json({
     error: {
       code: 'INTERNAL_SERVER_ERROR',

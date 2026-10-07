@@ -57,7 +57,9 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     admin,
     validate(createEmployeeSchema),
     async (_req, res) => {
-      const employee = await dependencies.employees.createEmployee(res.locals.validated);
+      const employee = await dependencies.employees.createEmployee(
+        res.locals.validatedParts.body,
+      );
       res.status(201).json(serialize(employee));
     },
   );
@@ -68,7 +70,7 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     admin,
     validate(listEmployeesQuerySchema, 'query'),
     async (_req, res) => {
-      const { status } = res.locals.validated;
+      const { status } = res.locals.validatedParts.query;
       res.json(serialize(await dependencies.employees.listEmployees(status)));
     },
   );
@@ -79,7 +81,7 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     admin,
     validate(employeeIdParamsSchema, 'params'),
     async (_req, res) => {
-      const { id } = res.locals.validated;
+      const { id } = res.locals.validatedParts.params;
       res.json(serialize(await dependencies.employees.listSalaryHistory(id)));
     },
   );
@@ -91,8 +93,8 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     validate(employeeIdParamsSchema, 'params'),
     validate(salaryRevisionSchema),
     async (_req, res) => {
-      const { id } = res.locals.validated;
-      const { effectiveFrom, monthlyCtcPaise } = res.locals.validated;
+      const { id } = res.locals.validatedParts.params;
+      const { effectiveFrom, monthlyCtcPaise } = res.locals.validatedParts.body;
       res
         .status(201)
         .json(
@@ -114,10 +116,10 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     validate(employeeIdParamsSchema, 'params'),
     validate(patchEmployeeSchema),
     async (req, res) => {
-      const { id } = res.locals.validated;
+      const { id } = res.locals.validatedParts.params;
       const employee = await dependencies.employees.updateEmployee(
         id,
-        res.locals.validated,
+        res.locals.validatedParts.body,
         req.user!.uid,
       );
       res.json(serialize(employee));
@@ -131,8 +133,8 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     validate(employeeIdParamsSchema, 'params'),
     validate(deactivateEmployeeSchema),
     async (req, res) => {
-      const { id } = res.locals.validated;
-      const { dol } = res.locals.validated;
+      const { id } = res.locals.validatedParts.params;
+      const { dol } = res.locals.validatedParts.body;
       res.json(
         serialize(
           await dependencies.employees.deactivateEmployee(id, req.user!.uid, dol),
@@ -147,7 +149,7 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     admin,
     validate(employeeIdParamsSchema, 'params'),
     async (req, res) => {
-      const { id } = res.locals.validated;
+      const { id } = res.locals.validatedParts.params;
       res.json(
         serialize(await dependencies.employees.reactivateEmployee(id, req.user!.uid)),
       );
@@ -160,7 +162,7 @@ export function createEmployeesRouter(dependencies: EmployeesRouteDependencies) 
     signedIn,
     validate(employeeIdParamsSchema, 'params'),
     async (req, res) => {
-      const { id } = res.locals.validated;
+      const { id } = res.locals.validatedParts.params;
       res.json(
         serialize(
           await dependencies.employees.getEmployee(id, {
