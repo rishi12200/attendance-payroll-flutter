@@ -125,7 +125,13 @@ export class EmployeeService {
         });
         return employeeRecord;
       });
-      return { ...employee, uid };
+      const responseTimestamp = new Date().toISOString();
+      return {
+        ...employee,
+        uid,
+        createdAt: responseTimestamp,
+        updatedAt: responseTimestamp,
+      };
     } catch (error) {
       try {
         await this.auth.deleteUser(uid);
@@ -194,7 +200,15 @@ export class EmployeeService {
       editedAt: this.store.serverTimestamp(),
     };
     await this.store.updateEmployee(uid, values);
-    return { ...existing, ...values, uid };
+    const responseTimestamp = new Date().toISOString();
+    return {
+      ...existing,
+      ...changes,
+      updatedAt: responseTimestamp,
+      editedBy,
+      editedAt: responseTimestamp,
+      uid,
+    };
   }
 
   async addSalaryRevision(
@@ -276,7 +290,16 @@ export class EmployeeService {
         `Auth access is disabled for employee ${uid}, but the profile update failed.`,
       );
     }
-    return { ...employee, ...values, uid };
+    const responseTimestamp = new Date().toISOString();
+    return {
+      ...employee,
+      status: 'inactive',
+      dol: lastDay,
+      updatedAt: responseTimestamp,
+      editedBy: callerUid,
+      editedAt: responseTimestamp,
+      uid,
+    };
   }
 
   async reactivateEmployee(uid: string, callerUid: string): Promise<EmployeeRecord> {
@@ -300,7 +323,16 @@ export class EmployeeService {
       editedAt: this.store.serverTimestamp(),
     };
     await this.store.updateEmployee(uid, values);
-    return { ...employee, ...values, uid, status: 'active' };
+    const responseTimestamp = new Date().toISOString();
+    return {
+      ...employee,
+      status: 'active',
+      dol: null,
+      updatedAt: responseTimestamp,
+      editedBy: callerUid,
+      editedAt: responseTimestamp,
+      uid,
+    };
   }
 
   private async requireEmployee(uid: string): Promise<EmployeeRecord> {

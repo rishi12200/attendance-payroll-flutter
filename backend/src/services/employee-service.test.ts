@@ -187,6 +187,8 @@ test('creates Auth claim, employee profile, first salary, and never returns pass
   assert.equal(result.role, 'employee');
   assert.equal(result.status, 'active');
   assert.equal('tempPassword' in result, false);
+  assert.equal(typeof result.createdAt, 'string');
+  assert.equal(new Date(result.createdAt as string).toISOString(), result.createdAt);
   assert.deepEqual(auth.accounts.get('uid-1')?.claims, { role: 'employee' });
   assert.deepEqual(store.salaries.get('uid-1_2026-10-01'), {
     empId: 'uid-1',
