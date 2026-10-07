@@ -366,8 +366,8 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [x] **Done when:** two test users log in and see different screens, and a request without a token gets 401
 
 ### Step 2: Employees
-- [ ] Employee endpoints, ID counter transaction, salary revisions
-- [ ] Deactivate and reactivate (disable Auth user, revoke tokens)
+- [x] Employee endpoints, ID counter transaction, salary revisions
+- [x] Deactivate and reactivate (disable Auth user, revoke tokens)
 - [ ] Flutter list and add or edit forms
 - [ ] **Done when:** the admin creates an employee who can log in, and a deactivated employee is blocked immediately
 
