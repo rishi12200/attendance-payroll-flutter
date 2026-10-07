@@ -317,6 +317,43 @@ test('checkout after IST midnight remains on the late-night check-in day', async
   assert.equal(result.workedMinutes, 5);
 });
 
+test('checkout uses the original branch when no assigned branch remains active', async () => {
+  const { store, service: attendance } = service({
+    branches: [{ ...branch, id: 'branch-deactivated', status: 'inactive' }],
+  });
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1',
+    month: '2026-10',
+    days: {
+      '2026-10-10': {
+        status: 'P',
+        inTime: Timestamp.fromDate(new Date('2026-10-10T09:00:00.000Z')),
+        inBranchId: 'branch-deactivated',
+      },
+    },
+  });
+
+  const result = await attendance.checkOut(caller, input);
+  assert.equal(result.date, '2026-10-10');
+  assert.equal(result.branchId, 'branch-deactivated');
+  assert.equal(result.branchName, null);
+  assert.equal(result.distanceMeters, null);
+  const day = store.attendance.get('2026-10_emp-1')?.days['2026-10-10'];
+  assert.equal(day?.outBranchId, 'branch-deactivated');
+  assert.equal('outDistance' in (day ?? {}), false);
+  assert.equal(store.checkins.at(-1)?.branchId, 'branch-deactivated');
+  assert.equal(store.checkins.at(-1)?.distance, null);
+});
+
+test('checkout without any open check-in returns NOT_CHECKED_IN even without branches', async () => {
+  const { service: attendance } = service({ branches: [] });
+  await expectError(
+    attendance.checkOut(caller, input),
+    409,
+    'NOT_CHECKED_IN',
+  );
+});
+
 test('checkout location enforcement defaults off and can be enabled', async () => {
   const setupOpenPunch = (store: FakeAttendanceStore) => {
     store.attendance.set('2026-10_emp-1', {

@@ -186,19 +186,15 @@ export class AttendanceService {
       input,
     );
 
-    if (allowedBranches.length === 0) {
-      await this.rejectAttempt(caller.uid, 'out', today, input, 'NO_BRANCH_ASSIGNED', nearest);
-      throw new AppError(
-        422,
-        'NO_BRANCH_ASSIGNED',
-        'No active branch is assigned to this employee.',
-      );
-    }
     if (input.isMocked && settings.rejectMockLocation) {
       await this.rejectAttempt(caller.uid, 'out', today, input, 'MOCK_LOCATION', nearest);
       throw new AppError(422, 'MOCK_LOCATION', 'Mock locations are not accepted.');
     }
-    if (settings.enforceCheckoutLocation && input.accuracy > settings.maxAccuracyMeters) {
+    if (
+      settings.enforceCheckoutLocation &&
+      allowedBranches.length > 0 &&
+      input.accuracy > settings.maxAccuracyMeters
+    ) {
       await this.rejectAttempt(caller.uid, 'out', today, input, 'ACCURACY_TOO_LOW', nearest);
       throw new AppError(
         422,
@@ -209,6 +205,7 @@ export class AttendanceService {
     }
     if (
       settings.enforceCheckoutLocation &&
+      allowedBranches.length > 0 &&
       (!nearest || !inside)
     ) {
       await this.rejectAttempt(caller.uid, 'out', today, input, 'OUTSIDE_GEOFENCE', nearest);
@@ -272,23 +269,48 @@ export class AttendanceService {
         throw new AppError(409, 'NOT_CHECKED_IN', 'The stored check-in time is invalid.');
       }
       const minutes = workedMinutes(inTime, now);
+      const branchId =
+        nearest?.id ??
+        (typeof selectedDay.inBranchId === 'string' ? selectedDay.inBranchId : null);
       transaction.createCheckin(
-        this.checkinRecord(caller.uid, 'out', today, input, nearest, true, null, serverTime),
+        this.checkinRecord(
+          caller.uid,
+          'out',
+          today,
+          input,
+          nearest,
+          true,
+          null,
+          serverTime,
+          branchId,
+        ),
       );
+      const checkoutDay: AttendanceDay = {
+        ...selectedDay,
+        outTime: serverTime,
+        outBranchId: branchId,
+        workedMinutes: minutes,
+      };
+      if (nearest) {
+        checkoutDay.outDistance = nearest.distanceMeters;
+      } else {
+        delete checkoutDay.outDistance;
+      }
       transaction.setAttendanceDay({
         id: dayId,
         empId: caller.uid,
         month,
         date: selectedDate,
-        day: {
-          ...selectedDay,
-          outTime: serverTime,
-          outBranchId: nearest!.id,
-          outDistance: nearest!.distanceMeters,
-          workedMinutes: minutes,
-        },
+        day: checkoutDay,
       });
-      return { date: selectedDate, inTime: selectedDay.inTime, workedMinutes: minutes };
+      return {
+        date: selectedDate,
+        inTime: selectedDay.inTime,
+        workedMinutes: minutes,
+        branchId,
+        branchName: nearest?.name ?? null,
+        distanceMeters: nearest?.distanceMeters ?? null,
+      };
     });
 
     const persisted = await this.requirePersistedDay(
@@ -300,9 +322,9 @@ export class AttendanceService {
       inTime: selected.inTime,
       outTime: persisted.outTime,
       workedMinutes: persisted.workedMinutes,
-      branchId: nearest!.id,
-      branchName: nearest!.name,
-      distanceMeters: nearest!.distanceMeters,
+      branchId: selected.branchId,
+      branchName: selected.branchName,
+      distanceMeters: selected.distanceMeters,
     };
   }
 
@@ -416,6 +438,7 @@ export class AttendanceService {
     accepted: boolean,
     rejectReason: string | null,
     serverTime: unknown,
+    fallbackBranchId: string | null = null,
   ): CheckinRecord {
     return {
       empId,
@@ -425,7 +448,7 @@ export class AttendanceService {
       lat: input.lat,
       lng: input.lng,
       accuracy: input.accuracy,
-      branchId: nearest?.id ?? null,
+      branchId: nearest?.id ?? fallbackBranchId,
       distance: nearest?.distanceMeters ?? null,
       deviceId: input.deviceId,
       isMocked: input.isMocked,
