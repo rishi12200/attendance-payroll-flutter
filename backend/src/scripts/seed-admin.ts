@@ -1,45 +1,6 @@
-import { z } from 'zod';
 import { FieldValue } from 'firebase-admin/firestore';
 import { auth, db } from '../config/firebase';
-
-interface AdminCredentials {
-  email: string;
-  password: string;
-}
-
-function parseArguments(args: string[]): AdminCredentials | undefined {
-  if (args.length !== 4) {
-    return undefined;
-  }
-
-  const values = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const option = args[index];
-    const value = args[index + 1];
-    if (
-      (option !== '--email' && option !== '--password') ||
-      value === undefined ||
-      value.startsWith('--') ||
-      values.has(option)
-    ) {
-      return undefined;
-    }
-    values.set(option, value);
-  }
-
-  const email = values.get('--email');
-  const password = values.get('--password');
-  if (
-    email === undefined ||
-    password === undefined ||
-    !z.string().email().safeParse(email).success ||
-    password.length < 6
-  ) {
-    return undefined;
-  }
-
-  return { email, password };
-}
+import { parseSeedUserArguments } from './seed-admin-args';
 
 function firebaseErrorCode(error: unknown): string | undefined {
   if (
@@ -54,10 +15,10 @@ function firebaseErrorCode(error: unknown): string | undefined {
 }
 
 async function main() {
-  const credentials = parseArguments(process.argv.slice(2));
+  const credentials = parseSeedUserArguments(process.argv.slice(2));
   if (!credentials) {
     console.error(
-      'Usage: npm run seed:admin -- --email <email> --password <password> (password must be at least 6 characters)',
+      'Usage: npm run seed:admin -- --email <email> --password <password> [--role admin|employee] (password must be at least 6 characters)',
     );
     process.exitCode = 1;
     return;
@@ -78,24 +39,24 @@ async function main() {
   }
 
   try {
-    await auth.setCustomUserClaims(uid, { role: 'admin' });
+    await auth.setCustomUserClaims(uid, { role: credentials.role });
     await db.collection('employees').doc(uid).create({
       name: credentials.email.split('@')[0],
       email: credentials.email,
-      role: 'admin',
+      role: credentials.role,
       status: 'active',
       createdAt: FieldValue.serverTimestamp(),
     });
   } catch (error) {
     const code = firebaseErrorCode(error);
     console.error(
-      `Auth user ${uid} was created, but admin setup did not complete${code ? ` (${code})` : ''}.`,
+      `Auth user ${uid} was created, but profile setup did not complete${code ? ` (${code})` : ''}.`,
     );
     process.exitCode = 1;
     return;
   }
 
-  console.log('Admin account created and configured.');
+  console.log(`Seed ${credentials.role} account created and configured.`);
 }
 
 void main().catch((error: unknown) => {
