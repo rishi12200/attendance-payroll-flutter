@@ -4,6 +4,10 @@ import { isValidDateString } from '../domain/dates';
 const dateString = z.string().refine(isValidDateString, 'Expected a valid YYYY-MM-DD date.');
 const optionalTrimmedText = z.string().trim().optional();
 const positiveInteger = z.number().int().positive();
+const branchIds = z
+  .array(z.string().trim().min(1))
+  .max(20)
+  .refine((ids) => new Set(ids).size === ids.length, 'Branch IDs must be unique.');
 
 export const createEmployeeSchema = z.strictObject({
   name: z.string().trim().min(1),
@@ -13,6 +17,8 @@ export const createEmployeeSchema = z.strictObject({
   designation: optionalTrimmedText,
   doj: dateString,
   monthlyCtcPaise: positiveInteger,
+  primaryBranchId: z.string().trim().min(1).nullable().optional(),
+  allowedBranchIds: branchIds.optional(),
 });
 
 export const patchEmployeeSchema = z
@@ -21,6 +27,8 @@ export const patchEmployeeSchema = z
     phone: optionalTrimmedText,
     designation: optionalTrimmedText,
     doj: dateString.optional(),
+    primaryBranchId: z.string().trim().min(1).nullable().optional(),
+    allowedBranchIds: branchIds.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'At least one editable field is required.');
 

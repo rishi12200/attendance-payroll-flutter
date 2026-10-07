@@ -30,7 +30,11 @@ test('rejects invalid create values, unknown fields, and floating-point paise', 
   };
   assert.equal(createEmployeeSchema.safeParse({ ...base, monthlyCtcPaise: 10.5 }).success, false);
   assert.equal(createEmployeeSchema.safeParse({ ...base, doj: '2026-02-30' }).success, false);
-  assert.equal(createEmployeeSchema.safeParse({ ...base, primaryBranchId: 'branch-1' }).success, false);
+  assert.equal(createEmployeeSchema.safeParse({
+    ...base,
+    primaryBranchId: 'branch-1',
+    allowedBranchIds: ['branch-1'],
+  }).success, true);
   assert.equal(createEmployeeSchema.safeParse({ ...base, email: 'bad-email' }).success, false);
   assert.equal(createEmployeeSchema.safeParse({ ...base, name: '   ' }).success, false);
   assert.equal(createEmployeeSchema.safeParse({ ...base, tempPassword: 'short' }).success, false);
@@ -41,6 +45,43 @@ test('patch only accepts editable fields and requires at least one change', () =
   assert.equal(patchEmployeeSchema.safeParse({}).success, false);
   assert.equal(patchEmployeeSchema.safeParse({ email: 'new@example.com' }).success, false);
   assert.equal(patchEmployeeSchema.safeParse({ monthlyCtcPaise: 2000 }).success, false);
+});
+
+test('validates employee branch assignment shapes and rejects duplicate IDs', () => {
+  assert.equal(
+    createEmployeeSchema.safeParse({
+      ...{
+        name: 'Casey',
+        email: 'casey@example.com',
+        tempPassword: 'temporary-123',
+        doj: '2026-10-07',
+        monthlyCtcPaise: 2500000,
+      },
+      primaryBranchId: null,
+      allowedBranchIds: [],
+    }).success,
+    true,
+  );
+  assert.equal(
+    patchEmployeeSchema.safeParse({
+      primaryBranchId: 'branch-1',
+      allowedBranchIds: ['branch-1', 'branch-1'],
+    }).success,
+    false,
+  );
+  assert.equal(
+    patchEmployeeSchema.safeParse({
+      primaryBranchId: null,
+      allowedBranchIds: [],
+    }).success,
+    true,
+  );
+  assert.equal(
+    patchEmployeeSchema.safeParse({
+      allowedBranchIds: Array.from({ length: 21 }, (_, index) => `branch-${index}`),
+    }).success,
+    false,
+  );
 });
 
 test('validates salary revisions and rejects paise floats', () => {
