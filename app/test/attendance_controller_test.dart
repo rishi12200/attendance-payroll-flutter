@@ -6,17 +6,14 @@ import 'package:app/features/attendance/data/attendance_repository.dart';
 import 'package:app/features/attendance/data/install_id_store.dart';
 import 'package:app/features/attendance/domain/attendance.dart';
 import 'package:app/features/attendance/domain/attendance_controller.dart';
+import 'package:app/features/attendance/domain/attendance_error_messages.dart';
 import 'package:app/features/branches/data/location_providers.dart';
 import 'package:app/features/branches/domain/branch.dart';
 import 'package:app/features/branches/domain/location_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _position = LocationSuccess(
-  latitude: 13,
-  longitude: 80,
-  accuracy: 10,
-);
+const _position = LocationSuccess(latitude: 13, longitude: 80, accuracy: 10);
 
 const _branch = Branch(
   id: 'branch-1',
@@ -137,20 +134,23 @@ Future<void> _settleInitialLoad(ProviderContainer container) async {
 }
 
 void main() {
-  test('initial load uses server date and restores a not-checked-in state', () async {
-    final repository = _FakeRepository([_month()]);
-    final container = _container(
-      repository: repository,
-      location: _FakeLocationService(_position),
-    );
-    addTearDown(container.dispose);
+  test(
+    'initial load uses server date and restores a not-checked-in state',
+    () async {
+      final repository = _FakeRepository([_month()]);
+      final container = _container(
+        repository: repository,
+        location: _FakeLocationService(_position),
+      );
+      addTearDown(container.dispose);
 
-    await _settleInitialLoad(container);
-    final state = container.read(attendanceControllerProvider);
-    expect(state, isA<AttendanceNotCheckedIn>());
-    expect((state as AttendanceNotCheckedIn).today, '2026-10-07');
-    expect(repository.requests, ['2000-01', '2026-10']);
-  });
+      await _settleInitialLoad(container);
+      final state = container.read(attendanceControllerProvider);
+      expect(state, isA<AttendanceNotCheckedIn>());
+      expect((state as AttendanceNotCheckedIn).today, '2026-10-07');
+      expect(repository.requests, ['2000-01', '2026-10']);
+    },
+  );
 
   test('restores open and completed server attendance states', () async {
     final openRepository = _FakeRepository([
@@ -170,10 +170,14 @@ void main() {
     );
     addTearDown(openContainer.dispose);
     await _settleInitialLoad(openContainer);
-    expect(openContainer.read(attendanceControllerProvider), isA<AttendanceCheckedIn>());
     expect(
-      (openContainer.read(attendanceControllerProvider) as AttendanceCheckedIn)
-          .branchName,
+      openContainer.read(attendanceControllerProvider),
+      isA<AttendanceCheckedIn>(),
+    );
+    expect(
+      (openContainer.read(
+        attendanceControllerProvider,
+      ) as AttendanceCheckedIn).branchName,
       'Chennai',
     );
 
@@ -200,174 +204,192 @@ void main() {
     );
   });
 
-  test('loads the prior month on server month boundary and checks out yesterday', () async {
-    final repository = _FakeRepository([
-      _month(
-        today: '2026-10-01',
-        serverTime: '2026-10-01T01:00:00.000Z',
-      ),
-      _month(
-        today: '2026-10-01',
-        serverTime: '2026-10-01T01:00:00.000Z',
-      ),
-      _month(
-        month: '2026-09',
-        today: '2026-10-01',
-        serverTime: '2026-10-01T01:00:00.000Z',
-        days: {
-          '2026-09-30': const AttendanceDay(
-            status: 'P',
-            inTime: '2026-09-30T20:00:00.000Z',
-            inBranchId: 'branch-1',
-          ),
-        },
-      ),
-      _month(
-        today: '2026-10-01',
-        serverTime: '2026-10-01T01:00:00.000Z',
-      ),
-      _month(
-        month: '2026-09',
-        today: '2026-10-01',
-        serverTime: '2026-10-01T01:00:00.000Z',
-        days: {
-          '2026-09-30': const AttendanceDay(
-            status: 'P',
-            inTime: '2026-09-30T20:00:00.000Z',
-            outTime: '2026-10-01T01:00:00.000Z',
-            workedMinutes: 300,
-            inBranchId: 'branch-1',
-          ),
-        },
-      ),
-    ]);
-    final container = _container(
-      repository: repository,
-      location: _FakeLocationService(_position),
-    );
-    addTearDown(container.dispose);
-    await _settleInitialLoad(container);
-
-    expect(repository.requests, ['2000-01', '2026-10', '2026-09']);
-    expect(container.read(attendanceControllerProvider), isA<AttendanceCheckedIn>());
-    await container.read(attendanceControllerProvider.notifier).checkOut();
-    expect(repository.payloads.single['deviceId'], 'stable-install-id');
-    expect(
-      container.read(attendanceControllerProvider),
-      isA<AttendanceCompleted>(),
-    );
-  });
-
-  test('check-in sends only current location, device id, and mocked flag', () async {
-    final repository = _FakeRepository([
-      _month(),
-      _month(),
-      _month(
-        days: {
-          '2026-10-07': const AttendanceDay(
-            status: 'P',
-            inTime: '2026-10-07T09:00:00.000Z',
-            inBranchId: 'branch-1',
-          ),
-        },
-      ),
-    ]);
-    final container = _container(
-      repository: repository,
-      location: _FakeLocationService(
-        const LocationSuccess(
-          latitude: 13,
-          longitude: 80,
-          accuracy: 10,
-          isMocked: true,
+  test(
+    'loads the prior month on server month boundary and checks out yesterday',
+    () async {
+      final repository = _FakeRepository([
+        _month(today: '2026-10-01', serverTime: '2026-10-01T01:00:00.000Z'),
+        _month(today: '2026-10-01', serverTime: '2026-10-01T01:00:00.000Z'),
+        _month(
+          month: '2026-09',
+          today: '2026-10-01',
+          serverTime: '2026-10-01T01:00:00.000Z',
+          days: {
+            '2026-09-30': const AttendanceDay(
+              status: 'P',
+              inTime: '2026-09-30T20:00:00.000Z',
+              inBranchId: 'branch-1',
+            ),
+          },
         ),
-      ),
-    );
-    addTearDown(container.dispose);
-    await _settleInitialLoad(container);
+        _month(today: '2026-10-01', serverTime: '2026-10-01T01:00:00.000Z'),
+        _month(
+          month: '2026-09',
+          today: '2026-10-01',
+          serverTime: '2026-10-01T01:00:00.000Z',
+          days: {
+            '2026-09-30': const AttendanceDay(
+              status: 'P',
+              inTime: '2026-09-30T20:00:00.000Z',
+              outTime: '2026-10-01T01:00:00.000Z',
+              workedMinutes: 300,
+              inBranchId: 'branch-1',
+            ),
+          },
+        ),
+      ]);
+      final container = _container(
+        repository: repository,
+        location: _FakeLocationService(_position),
+      );
+      addTearDown(container.dispose);
+      await _settleInitialLoad(container);
 
-    await container.read(attendanceControllerProvider.notifier).checkIn();
-    expect(repository.payloads.single, {
-      'lat': 13.0,
-      'lng': 80.0,
-      'accuracy': 10.0,
-      'deviceId': 'stable-install-id',
-      'isMocked': true,
-    });
-    expect(container.read(attendanceControllerProvider), isA<AttendanceCheckedIn>());
-  });
+      expect(repository.requests, ['2000-01', '2026-10', '2026-09']);
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceCheckedIn>(),
+      );
+      await container.read(attendanceControllerProvider.notifier).checkOut();
+      expect(repository.payloads.single['deviceId'], 'stable-install-id');
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceCompleted>(),
+      );
+    },
+  );
 
-  test('ignores a second punch while location acquisition is pending', () async {
-    final location = _FakeLocationService(_position)
-      ..pending = Completer<LocationResult>();
-    final container = _container(
-      repository: _FakeRepository([_month()]),
-      location: location,
-    );
-    addTearDown(container.dispose);
-    await _settleInitialLoad(container);
+  test(
+    'check-in sends only current location, device id, and mocked flag',
+    () async {
+      final repository = _FakeRepository([
+        _month(),
+        _month(),
+        _month(
+          days: {
+            '2026-10-07': const AttendanceDay(
+              status: 'P',
+              inTime: '2026-10-07T09:00:00.000Z',
+              inBranchId: 'branch-1',
+            ),
+          },
+        ),
+      ]);
+      final container = _container(
+        repository: repository,
+        location: _FakeLocationService(
+          const LocationSuccess(
+            latitude: 13,
+            longitude: 80,
+            accuracy: 10,
+            isMocked: true,
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+      await _settleInitialLoad(container);
 
-    final controller = container.read(attendanceControllerProvider.notifier);
-    final first = controller.checkIn();
-    final second = controller.checkIn();
-    await second;
-    expect(location.calls, 1);
-    location.pending!.complete(_position);
-    await first;
-  });
+      await container.read(attendanceControllerProvider.notifier).checkIn();
+      expect(repository.payloads.single, {
+        'lat': 13.0,
+        'lng': 80.0,
+        'accuracy': 10.0,
+        'deviceId': 'stable-install-id',
+        'isMocked': true,
+      });
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceCheckedIn>(),
+      );
+    },
+  );
 
-  test('refreshes from server after duplicate or missing punch conflicts', () async {
-    final repository = _FakeRepository([_month(), _month()]);
-    repository.punchError = const AppException(
-      code: 'ALREADY_CHECKED_IN',
-      message: 'Already checked in.',
-      details: {},
-      statusCode: 409,
-    );
-    final container = _container(
-      repository: repository,
-      location: _FakeLocationService(_position),
-    );
-    addTearDown(container.dispose);
-    await _settleInitialLoad(container);
-    await container.read(attendanceControllerProvider.notifier).checkIn();
-
-    expect(repository.requests.length, 3);
-    expect(container.read(attendanceControllerProvider), isA<AttendanceNotCheckedIn>());
-    expect(
-      container.read(attendanceControllerProvider).feedback,
-      'Already checked in.',
-    );
-  });
-
-  test('location failure reasons have messages and settings action support', () async {
-    for (final reason in LocationFailureReason.values) {
-      final location = _FakeLocationService(LocationFailure(reason));
+  test(
+    'ignores a second punch while location acquisition is pending',
+    () async {
+      final location = _FakeLocationService(_position)
+        ..pending = Completer<LocationResult>();
       final container = _container(
         repository: _FakeRepository([_month()]),
         location: location,
       );
+      addTearDown(container.dispose);
+      await _settleInitialLoad(container);
+
+      final controller = container.read(attendanceControllerProvider.notifier);
+      final first = controller.checkIn();
+      final second = controller.checkIn();
+      await second;
+      expect(location.calls, 1);
+      location.pending!.complete(_position);
+      await first;
+    },
+  );
+
+  test(
+    'refreshes from server after duplicate or missing punch conflicts',
+    () async {
+      final repository = _FakeRepository([_month(), _month()]);
+      repository.punchError = const AppException(
+        code: 'ALREADY_CHECKED_IN',
+        message: 'Already checked in.',
+        details: {},
+        statusCode: 409,
+      );
+      final container = _container(
+        repository: repository,
+        location: _FakeLocationService(_position),
+      );
+      addTearDown(container.dispose);
       await _settleInitialLoad(container);
       await container.read(attendanceControllerProvider.notifier).checkIn();
-      final state = container.read(attendanceControllerProvider);
-      expect(state.feedback, isNotEmpty);
-      if (reason == LocationFailureReason.serviceDisabled ||
-          reason == LocationFailureReason.permissionDeniedForever) {
-        await location.openSettings(reason);
-        expect(location.opened, reason);
+
+      expect(repository.requests.length, 3);
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceNotCheckedIn>(),
+      );
+      expect(
+        container.read(attendanceControllerProvider).feedback,
+        'Already checked in.',
+      );
+    },
+  );
+
+  test(
+    'location failure reasons have messages and settings action support',
+    () async {
+      for (final reason in LocationFailureReason.values) {
+        final location = _FakeLocationService(LocationFailure(reason));
+        final container = _container(
+          repository: _FakeRepository([_month()]),
+          location: location,
+        );
+        await _settleInitialLoad(container);
+        await container.read(attendanceControllerProvider.notifier).checkIn();
+        final state = container.read(attendanceControllerProvider);
+        expect(state.feedback, isNotEmpty);
+        if (reason == LocationFailureReason.serviceDisabled ||
+            reason == LocationFailureReason.permissionDeniedForever) {
+          await location.openSettings(reason);
+          expect(location.opened, reason);
+        }
+        container.dispose();
       }
-      container.dispose();
-    }
-  });
+    },
+  );
 
   test('maps backend attendance errors to friendly messages', () {
-    AppException error(String code, Map<String, Object?> details, {int status = 422}) =>
-        AppException(
-          code: code,
-          message: 'Server fallback.',
-          details: details,
-          statusCode: status,
-        );
+    AppException error(
+      String code,
+      Map<String, Object?> details, {
+      int status = 422,
+    }) => AppException(
+      code: code,
+      message: 'Server fallback.',
+      details: details,
+      statusCode: status,
+    );
     expect(
       attendanceErrorMessage(
         error('OUTSIDE_GEOFENCE', {
@@ -379,12 +401,13 @@ void main() {
       'You are 1.2 km from Thoraipakkam; you need to be within 332 m.',
     );
     expect(
-      attendanceErrorMessage(
-        error('ACCURACY_TOO_LOW', {'accuracy': 150}),
-      ),
+      attendanceErrorMessage(error('ACCURACY_TOO_LOW', {'accuracy': 150})),
       'GPS accuracy is too low (150 m). Move to an open area and try again.',
     );
-    expect(attendanceErrorMessage(error('MOCK_LOCATION', {})), 'Mock locations are not allowed.');
+    expect(
+      attendanceErrorMessage(error('MOCK_LOCATION', {})),
+      'Mock locations are not allowed.',
+    );
     expect(
       attendanceErrorMessage(error('NO_BRANCH_ASSIGNED', {})),
       'No branch is assigned to you yet. Ask your admin.',
@@ -397,5 +420,42 @@ void main() {
       attendanceErrorMessage(error('FORBIDDEN', {}, status: 403)),
       "Your account can't check in. Contact your admin.",
     );
+    expect(
+      attendanceErrorMessage(error('ALREADY_CHECKED_IN', {}, status: 409)),
+      'Server fallback.',
+    );
+    expect(
+      locationFailureMessage(LocationFailureReason.permissionDenied),
+      'Location permission was denied. Allow location access to continue.',
+    );
+  });
+
+  test('refreshes server truth after all punch-state conflicts', () async {
+    for (final code in [
+      'ALREADY_CHECKED_IN',
+      'ALREADY_CHECKED_OUT',
+      'NOT_CHECKED_IN',
+    ]) {
+      final repository = _FakeRepository([_month(), _month()])
+        ..punchError = AppException(
+          code: code,
+          message: 'Conflict from server.',
+          details: const {},
+          statusCode: 409,
+        );
+      final container = _container(
+        repository: repository,
+        location: _FakeLocationService(_position),
+      );
+      await _settleInitialLoad(container);
+      await container.read(attendanceControllerProvider.notifier).checkIn();
+      expect(repository.requests.length, 3, reason: code);
+      expect(
+        container.read(attendanceControllerProvider).feedback,
+        'Conflict from server.',
+        reason: code,
+      );
+      container.dispose();
+    }
   });
 }

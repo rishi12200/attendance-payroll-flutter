@@ -5,6 +5,7 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../features/branches/data/location_providers.dart';
 import '../../../features/branches/domain/location_service.dart';
 import '../domain/attendance_controller.dart';
+import '../domain/attendance_error_messages.dart';
 import '../domain/attendance_helpers.dart';
 import 'location_estimate.dart';
 
@@ -86,9 +87,10 @@ class _EmployeeAttendanceScreenState
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 4),
-            if (state case AttendanceNotCheckedIn(:final today) ||
-                AttendanceCheckedIn(:final today) ||
-                AttendanceCompleted(:final today))
+            if (state
+                case AttendanceNotCheckedIn(:final today) ||
+                    AttendanceCheckedIn(:final today) ||
+                    AttendanceCompleted(:final today))
               Text(_formatDate(today)),
             const SizedBox(height: 16),
             _buildAttendanceContent(context, state, estimate),
@@ -146,16 +148,12 @@ class _EmployeeAttendanceScreenState
         icon: Icons.login,
         children: const [],
       ),
-      AttendanceCheckedIn(
-        :final inTime,
-        :final branchName,
-      ) =>
-        _statusCard(
-          context,
-          title: 'Checked in at ${formatIstTime(inTime)}',
-          icon: Icons.login,
-          children: [Text(branchName)],
-        ),
+      AttendanceCheckedIn(:final inTime, :final branchName) => _statusCard(
+        context,
+        title: 'Checked in at ${formatIstTime(inTime)}',
+        icon: Icons.login,
+        children: [Text(branchName)],
+      ),
       AttendanceCompleted(
         :final inTime,
         :final outTime,
@@ -173,15 +171,13 @@ class _EmployeeAttendanceScreenState
         ),
       AttendanceLoading() || AttendanceLoadError() => const SizedBox.shrink(),
     };
-    final canPunch = !state.isWorking &&
+    final canPunch =
+        !state.isWorking &&
         (state is AttendanceCheckedIn ||
             state is AttendanceCompleted ||
             (state is AttendanceNotCheckedIn && !isNoBranch));
     final button = state is AttendanceCompleted
-        ? const FilledButton(
-            onPressed: null,
-            child: Text('Done for today'),
-          )
+        ? const FilledButton(onPressed: null, child: Text('Done for today'))
         : FilledButton.icon(
             onPressed: canPunch
                 ? () {
@@ -257,10 +253,7 @@ class _EmployeeAttendanceScreenState
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          for (final child in children) ...[
-            const SizedBox(height: 8),
-            child,
-          ],
+          for (final child in children) ...[const SizedBox(height: 8), child],
         ],
       ),
     ),
@@ -275,7 +268,10 @@ class _EmployeeAttendanceScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Distance estimate', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Distance estimate',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           estimate.when(
             loading: () => const Row(
