@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/middleware/auth.test.ts src/services/serialize.test.ts src/scripts/seed-admin-args.test.ts src/scripts/dev-login.test.ts src/domain/dates.test.ts src/domain/emp-code.test.ts src/domain/branches.test.ts src/routes/branch-schemas.test.ts src/routes/employee-schemas.test.ts src/routes/branches.test.ts src/routes/employees.test.ts src/services/branch-service.test.ts src/services/employee-service.test.ts",
+    "test": "tsx --test src/middleware/auth.test.ts src/services/serialize.test.ts src/scripts/seed-admin-args.test.ts src/scripts/dev-login.test.ts src/domain/dates.test.ts src/domain/emp-code.test.ts src/domain/branches.test.ts src/domain/attendance.test.ts src/routes/branch-schemas.test.ts src/routes/employee-schemas.test.ts src/routes/branches.test.ts src/routes/employees.test.ts src/services/branch-service.test.ts src/services/employee-service.test.ts",
     "seed:admin": "tsx src/scripts/seed-admin.ts",
     "dev:login": "tsx src/scripts/dev-login.ts",
     "check:firebase": "tsx src/scripts/check-firebase.ts"
