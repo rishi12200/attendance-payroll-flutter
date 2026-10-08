@@ -12,11 +12,14 @@ import { FirestoreAttendanceViewsStore } from './services/firestore-attendance-v
 import { AttendanceViewsService } from './services/attendance-views-service';
 import { SettingsService } from './services/settings-service';
 import { HolidayService } from './services/holiday-service';
+import { LeaveService } from './services/leave-service';
+import { FirestoreLeaveStore } from './services/firestore-leave-store';
 
 const employeeStore = new FirestoreEmployeeStore(db);
 const branchStore = new FirestoreBranchStore(db);
 const attendanceStore = new FirestoreAttendanceStore(db);
 const attendanceViewsStore = new FirestoreAttendanceViewsStore(db);
+const leaveStore = new FirestoreLeaveStore(db);
 const app = createApp({
   verifyIdToken: (token, checkRevoked) => auth.verifyIdToken(token, checkRevoked),
   getProfile: getUserProfile,
@@ -38,6 +41,7 @@ const app = createApp({
   }),
   settings: new SettingsService(attendanceViewsStore),
   holidays: new HolidayService(attendanceViewsStore),
+  leaves: new LeaveService(leaveStore),
 });
 
 app.listen(env.PORT, () => {
