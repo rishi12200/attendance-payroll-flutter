@@ -379,7 +379,7 @@ Each step ends with something you can demo and test. Do one step at a time and c
 ### Step 4: Check-in and check-out (the core)
 - [x] Haversine, geofence and IST date helpers with unit tests
 - [x] Transactional check-in and check-out endpoints, `checkins` records
-- [ ] Flutter home screen: permissions, distance readout, clear rejection messages
+- [x] Flutter home screen: permissions, distance readout, clear rejection messages
 - [ ] **Done when:** inside the radius succeeds, outside is rejected, mock location is flagged, a double tap creates one check-in
 
 ### Step 5: Attendance views
