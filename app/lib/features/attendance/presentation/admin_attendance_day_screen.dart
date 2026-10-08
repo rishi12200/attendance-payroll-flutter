@@ -1,12 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/api/app_exception.dart';
 import '../data/attendance_views_providers.dart';
 import '../domain/attendance_helpers.dart';
 import '../domain/attendance_views.dart';
+import 'admin_attendance_summary_screen.dart';
 
 typedef OpenEmployeeAttendance = void Function(String empId, String month);
+
+class AdminAttendanceScreen extends StatefulWidget {
+  const AdminAttendanceScreen({super.key});
+
+  @override
+  State<AdminAttendanceScreen> createState() => _AdminAttendanceScreenState();
+}
+
+class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+  int _view = 0;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Attendance')),
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('Day')),
+              ButtonSegment(value: 1, label: Text('Month summary')),
+            ],
+            selected: {_view},
+            onSelectionChanged: (selection) =>
+                setState(() => _view = selection.first),
+          ),
+        ),
+        Expanded(
+          child: _view == 0
+              ? AdminAttendanceDayScreen(
+                  onOpenEmployee: (id, month) => context.go(
+                    '/admin/attendance/employee/${Uri.encodeComponent(id)}?month=$month',
+                  ),
+                )
+              : AdminAttendanceSummaryScreen(
+                  onOpenEmployee: (id, month) => context.go(
+                    '/admin/attendance/employee/${Uri.encodeComponent(id)}?month=$month',
+                  ),
+                ),
+        ),
+      ],
+    ),
+  );
+}
 
 class AdminAttendanceDayScreen extends ConsumerStatefulWidget {
   const AdminAttendanceDayScreen({this.onOpenEmployee, super.key});

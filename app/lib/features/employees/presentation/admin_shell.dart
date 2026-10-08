@@ -9,7 +9,9 @@ class AdminShellScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = GoRouterState.of(context).uri.path;
-    final selectedIndex = path.startsWith('/admin/branches')
+    final selectedIndex = path.startsWith('/admin/attendance')
+        ? 3
+        : path.startsWith('/admin/branches')
         ? 2
         : path.startsWith('/admin/employees')
         ? 1
@@ -22,7 +24,8 @@ class AdminShellScreen extends StatelessWidget {
           context.go(switch (index) {
             0 => '/admin/dashboard',
             1 => '/admin/employees',
-            _ => '/admin/branches',
+            2 => '/admin/branches',
+            _ => '/admin/attendance',
           });
         },
         destinations: const [
@@ -40,6 +43,11 @@ class AdminShellScreen extends StatelessWidget {
             icon: Icon(Icons.location_on_outlined),
             selectedIcon: Icon(Icons.location_on),
             label: 'Branches',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.fact_check_outlined),
+            selectedIcon: Icon(Icons.fact_check),
+            label: 'Attendance',
           ),
         ],
       ),
