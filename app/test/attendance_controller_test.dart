@@ -458,4 +458,61 @@ void main() {
       container.dispose();
     }
   });
+
+  test('controller displays friendly feedback for each punch business error', () async {
+    final cases = <(String, int, Map<String, Object?>, String)>[
+      (
+        'OUTSIDE_GEOFENCE',
+        422,
+        {
+          'distanceMeters': 1200,
+          'radiusMeters': 332,
+          'nearestBranchName': 'Thoraipakkam',
+        },
+        'You are 1.2 km from Thoraipakkam; you need to be within 332 m.',
+      ),
+      (
+        'ACCURACY_TOO_LOW',
+        422,
+        {'accuracy': 150, 'maxAccuracyMeters': 100},
+        'GPS accuracy is too low (150 m). Move to an open area and try again.',
+      ),
+      ('MOCK_LOCATION', 422, const {}, 'Mock locations are not allowed.'),
+      (
+        'NO_BRANCH_ASSIGNED',
+        422,
+        const {},
+        'No branch is assigned to you yet. Ask your admin.',
+      ),
+      ('MONTH_LOCKED', 409, const {}, 'The payroll month is locked.'),
+      (
+        'FORBIDDEN',
+        403,
+        const {},
+        "Your account can't check in. Contact your admin.",
+      ),
+    ];
+
+    for (final (code, status, details, message) in cases) {
+      final repository = _FakeRepository([_month(), _month()])
+        ..punchError = AppException(
+          code: code,
+          message: 'The payroll month is locked.',
+          details: details,
+          statusCode: status,
+        );
+      final container = _container(
+        repository: repository,
+        location: _FakeLocationService(_position),
+      );
+      await _settleInitialLoad(container);
+      await container.read(attendanceControllerProvider.notifier).checkIn();
+      expect(
+        container.read(attendanceControllerProvider).feedback,
+        message,
+        reason: code,
+      );
+      container.dispose();
+    }
+  });
 }
