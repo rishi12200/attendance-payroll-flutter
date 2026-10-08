@@ -201,8 +201,11 @@ test('applies a pending request and enforces the employee joining window', async
   const { store, leaves } = service();
   const result = await apply(leaves, '2026-10-05', '2026-10-06');
   assert.equal(result.status, 'pending');
+  assert.equal(result.fromDate, '2026-10-05');
+  assert.equal(result.toDate, '2026-10-06');
   assert.equal(result.reason, 'Family event');
   assert.equal(result.createdAt, timestamp);
+  assert.deepEqual(result, await leaves.getById(empCaller, result.id));
   assert.equal(store.listLimit, 0);
 
   await expectError(apply(leaves, '2025-12-31'), 422, 'OUTSIDE_EMPLOYMENT_WINDOW');
@@ -253,13 +256,18 @@ test('lists own and admin requests with filters, newest order and employee detai
   store.seedRequest({ id: 'other', empId: 'emp-2', fromDate: '2026-10-03', toDate: '2026-10-03' });
   const mine = await leaves.listMine(empCaller, 'all');
   assert.deepEqual(mine.map((request) => request.id), ['new', 'old']);
+  assert.equal(mine[0]?.fromDate, '2026-10-02');
+  assert.equal(mine[0]?.toDate, '2026-10-02');
   assert.equal(store.listLimit, 200);
   const adminList = await leaves.listAll(admin, { status: 'all' });
   assert.equal(adminList.length, 3);
   assert.equal(adminList.find((request) => request.id === 'new')?.name, 'Asha');
+  assert.equal(adminList.find((request) => request.id === 'new')?.fromDate, '2026-10-02');
+  assert.equal(adminList.find((request) => request.id === 'new')?.toDate, '2026-10-02');
   assert.equal(adminList.find((request) => request.id === 'other')?.designation, 'Associate');
   await expectError(leaves.listAll(empCaller, { status: 'all' }), 403, 'FORBIDDEN');
   assert.equal((await leaves.getById(empCaller, 'new')).id, 'new');
+  assert.equal((await leaves.getById(empCaller, 'new')).toDate, '2026-10-02');
   await expectError(leaves.getById(otherCaller, 'new'), 404, 'LEAVE_NOT_FOUND');
   assert.equal((await leaves.getById(admin, 'new')).id, 'new');
 });
@@ -269,6 +277,9 @@ test('cancels only the caller own pending requests', async () => {
   store.seedRequest({ id: 'mine', fromDate: '2026-10-05', toDate: '2026-10-05' });
   const cancelled = await leaves.cancel(empCaller, 'mine');
   assert.equal(cancelled.status, 'cancelled');
+  assert.equal(cancelled.fromDate, '2026-10-05');
+  assert.equal(cancelled.toDate, '2026-10-05');
+  assert.deepEqual(cancelled, await leaves.getById(empCaller, 'mine'));
   assert.equal(cancelled.updatedAt, timestamp);
   store.seedRequest({ id: 'other', empId: 'emp-2', fromDate: '2026-10-05', toDate: '2026-10-05' });
   await expectError(leaves.cancel(empCaller, 'other'), 404, 'LEAVE_NOT_FOUND');
@@ -291,6 +302,9 @@ test('approves paid and unpaid requests into L and UL attendance days with audit
       note: 'Approved by manager',
     });
     assert.equal(result.status, 'approved');
+    assert.equal(result.fromDate, '2026-10-05');
+    assert.equal(result.toDate, '2026-10-06');
+    assert.deepEqual(result, await leaves.getById(admin, request.id));
     assert.deepEqual(result.writtenDates, ['2026-10-05', '2026-10-06']);
     assert.deepEqual(result.skippedDates, []);
     assert.equal(result.leaveType, leaveType);

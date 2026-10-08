@@ -38,18 +38,34 @@ const employeeHeaders = { ...headers, authorization: 'Bearer employee-token' };
 
 function makeApp() {
   const calls: string[] = [];
+  const requestRecord: Record<string, unknown> = {
+    id: 'leave-1', empId: 'emp-1', fromDate: '2026-10-10', toDate: '2026-10-11',
+    reason: 'personal', status: 'pending',
+    createdAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00Z')),
+    updatedAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00Z')),
+  };
   const leaves: LeaveOperations = {
     apply: async (caller, body) => {
       calls.push(`apply:${caller.uid}:${body.reason}`);
-      return { id: 'leave-1', status: 'pending', createdAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00Z')) };
+      Object.assign(requestRecord, { fromDate: body.fromDate, toDate: body.toDate, reason: body.reason, status: 'pending' });
+      return { ...requestRecord };
     },
-    listMine: async (_caller, status) => { calls.push(`mine:${status ?? ''}`); return []; },
-    listAll: async (_caller, input) => { calls.push(`list:${input.status}:${input.empId ?? ''}`); return []; },
-    getById: async (_caller, id) => { calls.push(`get:${id}`); return { id }; },
-    cancel: async (_caller, id) => { calls.push(`cancel:${id}`); return { id, status: 'cancelled' }; },
+    listMine: async (_caller, status) => { calls.push(`mine:${status ?? ''}`); return [{ ...requestRecord }]; },
+    listAll: async (_caller, input) => { calls.push(`list:${input.status}:${input.empId ?? ''}`); return [{ ...requestRecord, empCode: 'EMP001', name: 'Asha', designation: 'Associate' }]; },
+    getById: async (_caller, id) => { calls.push(`get:${id}`); return { ...requestRecord }; },
+    cancel: async (_caller, id) => {
+      calls.push(`cancel:${id}`);
+      requestRecord.status = 'cancelled';
+      return { ...requestRecord };
+    },
     decide: async ({ id, decision, leaveType }) => {
       calls.push(`decision:${id}:${decision}:${leaveType ?? ''}`);
-      return { id, status: decision, writtenDates: [], skippedDates: [] };
+      Object.assign(requestRecord, {
+        status: decision, decidedBy: 'admin-1', decidedAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00Z')),
+        decisionNote: null,
+        ...(decision === 'approved' ? { leaveType, writtenDates: ['2026-10-10', '2026-10-11'], skippedDates: [] } : {}),
+      });
+      return { ...requestRecord };
     },
   };
   const app = createApp({
@@ -116,5 +132,34 @@ test('leave routes validate each request part and serialize returned timestamps'
   });
   assert.equal(created.status, 201);
   assert.equal(created.body.createdAt, '2026-10-08T10:00:00.000Z');
-  assert.deepEqual(calls, ['apply:emp-1:personal']);
+  assert.equal(created.body.fromDate, '2026-10-10');
+  assert.equal(created.body.toDate, '2026-10-10');
+  const subsequentGet = await request(app, '/leaves/leave-1', { headers: employeeHeaders });
+  assert.deepEqual(created.body, subsequentGet.body);
+
+  const mine = await request(app, '/leaves/me', { headers: employeeHeaders });
+  const adminList = await request(app, '/leaves?status=all', { headers });
+  assert.equal(mine.body[0].fromDate, '2026-10-10');
+  assert.equal(mine.body[0].toDate, '2026-10-10');
+  assert.equal(adminList.body[0].fromDate, '2026-10-10');
+  assert.equal(adminList.body[0].toDate, '2026-10-10');
+  assert.equal(adminList.body[0].empCode, 'EMP001');
+
+  const cancelled = await request(app, '/leaves/leave-1/cancel', { method: 'POST', headers: employeeHeaders });
+  const cancelledGet = await request(app, '/leaves/leave-1', { headers: employeeHeaders });
+  assert.equal(cancelled.body.fromDate, '2026-10-10');
+  assert.equal(cancelled.body.toDate, '2026-10-10');
+  assert.deepEqual(cancelled.body, cancelledGet.body);
+
+  const decided = await request(app, '/leaves/leave-1/decision', {
+    method: 'POST', headers, body: JSON.stringify({ decision: 'approved', leaveType: 'paid' }),
+  });
+  const decidedGet = await request(app, '/leaves/leave-1', { headers });
+  assert.equal(decided.body.fromDate, '2026-10-10');
+  assert.equal(decided.body.toDate, '2026-10-10');
+  assert.deepEqual(decided.body, decidedGet.body);
+  assert.deepEqual(calls, [
+    'apply:emp-1:personal', 'get:leave-1', 'mine:', 'list:all:',
+    'cancel:leave-1', 'get:leave-1', 'decision:leave-1:approved:paid', 'get:leave-1',
+  ]);
 });

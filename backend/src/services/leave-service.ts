@@ -26,13 +26,19 @@ export interface LeaveServiceDependencies {
   store: LeaveStore;
 }
 
+export type LeaveDto = Pick<LeaveRequestRecord,
+  'id' | 'empId' | 'fromDate' | 'toDate' | 'reason' | 'status' | 'createdAt' | 'updatedAt'
+> & Partial<Pick<LeaveRequestRecord,
+  'leaveType' | 'decidedBy' | 'decidedAt' | 'decisionNote' | 'writtenDates' | 'skippedDates'
+>>;
+
 export class LeaveService {
   constructor(private readonly store: LeaveStore) {}
 
   async apply(
     caller: LeaveCaller,
     input: { fromDate: string; toDate: string; reason: string },
-  ): Promise<LeaveRequestRecord> {
+  ): Promise<LeaveDto> {
     const employee = await this.requireActiveEmployee(caller);
     const dates = this.expandRequest(input.fromDate, input.toDate);
     this.assertWithinEmploymentWindow(employee, input.fromDate, input.toDate);
@@ -75,19 +81,20 @@ export class LeaveService {
         updatedAt: timestamp,
       });
     });
-    return this.requirePersistedRequest(id);
+    return toLeaveDto(await this.requirePersistedRequest(id));
   }
 
   async listMine(
     caller: LeaveCaller,
     status?: LeaveStatus | 'all',
-  ): Promise<LeaveRequestRecord[]> {
+  ): Promise<LeaveDto[]> {
     await this.requireActiveEmployee(caller);
     const requests = await this.store.listLeaveRequests({
       empId: caller.uid,
       limit: MAX_LIST_READS,
     });
-    return sortNewestFirst(requests.filter((request) => status === undefined || status === 'all' || request.status === status));
+    return sortNewestFirst(requests.filter((request) => status === undefined || status === 'all' || request.status === status))
+      .map(toLeaveDto);
   }
 
   async listAll(
@@ -111,7 +118,7 @@ export class LeaveService {
     return matching.map((request) => {
       const employee = byId.get(request.empId);
       return {
-        ...request,
+        ...toLeaveDto(request),
         name: employee?.name ?? '',
         empCode: employee?.empCode ?? null,
         designation: employee?.designation ?? '',
@@ -119,7 +126,7 @@ export class LeaveService {
     });
   }
 
-  async getById(caller: LeaveCaller, id: string): Promise<LeaveRequestRecord> {
+  async getById(caller: LeaveCaller, id: string): Promise<LeaveDto> {
     if (caller.role !== 'admin' && caller.role !== 'employee') {
       throw this.forbidden();
     }
@@ -127,10 +134,10 @@ export class LeaveService {
     if (!request || (caller.role === 'employee' && request.empId !== caller.uid)) {
       throw new AppError(404, 'LEAVE_NOT_FOUND', 'Leave request was not found.');
     }
-    return request;
+    return toLeaveDto(request);
   }
 
-  async cancel(caller: LeaveCaller, id: string): Promise<LeaveRequestRecord> {
+  async cancel(caller: LeaveCaller, id: string): Promise<LeaveDto> {
     await this.requireActiveEmployee(caller);
     await this.store.runTransaction(async (transaction) => {
       const request = await transaction.getLeaveRequest(id);
@@ -145,7 +152,7 @@ export class LeaveService {
         updatedAt: this.store.serverTimestamp(),
       });
     });
-    return this.requirePersistedRequest(id);
+    return toLeaveDto(await this.requirePersistedRequest(id));
   }
 
   async decide(input: {
@@ -154,7 +161,7 @@ export class LeaveService {
     decision: 'approved' | 'rejected';
     leaveType?: LeaveType;
     note?: string;
-  }): Promise<LeaveRequestRecord & { noDaysWritten?: true }> {
+  }): Promise<LeaveDto & { noDaysWritten?: true }> {
     this.requireRole(input.caller.role, 'admin');
     const noDaysWritten = await this.store.runTransaction(async (transaction) => {
       const request = await transaction.getLeaveRequest(input.id);
@@ -251,7 +258,7 @@ export class LeaveService {
       return classification.toWrite.length === 0;
     });
 
-    const request = await this.requirePersistedRequest(input.id);
+    const request = toLeaveDto(await this.requirePersistedRequest(input.id));
     return noDaysWritten ? { ...request, noDaysWritten: true } : request;
   }
 
@@ -313,6 +320,30 @@ export class LeaveService {
 
 function attendanceId(month: string, empId: string): string {
   return `${month}_${empId}`;
+}
+
+export function toLeaveDto(request: LeaveRequestRecord): LeaveDto {
+  const dto: LeaveDto = {
+    id: request.id,
+    empId: request.empId,
+    fromDate: request.fromDate,
+    toDate: request.toDate,
+    reason: request.reason,
+    status: request.status,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+  };
+  if (request.status === 'approved' || request.status === 'rejected') {
+    if (request.leaveType !== undefined) dto.leaveType = request.leaveType;
+    if (request.decidedBy !== undefined) dto.decidedBy = request.decidedBy;
+    if (request.decidedAt !== undefined) dto.decidedAt = request.decidedAt;
+    dto.decisionNote = request.decisionNote ?? null;
+  }
+  if (request.status === 'approved') {
+    dto.writtenDates = request.writtenDates ?? [];
+    dto.skippedDates = request.skippedDates ?? [];
+  }
+  return dto;
 }
 
 function sortNewestFirst(requests: LeaveRequestRecord[]): LeaveRequestRecord[] {
