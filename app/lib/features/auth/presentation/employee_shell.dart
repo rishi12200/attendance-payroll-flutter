@@ -8,14 +8,21 @@ class EmployeeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final attendance =
-        GoRouterState.of(context).uri.path == '/employee/attendance';
+    final path = GoRouterState.of(context).uri.path;
+    final selectedIndex = path.startsWith('/employee/attendance')
+        ? 1
+        : path.startsWith('/employee/leave')
+        ? 2
+        : 0;
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: attendance ? 1 : 0,
-        onDestinationSelected: (index) =>
-            context.go(index == 0 ? '/employee' : '/employee/attendance'),
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) => context.go(switch (index) {
+          0 => '/employee',
+          1 => '/employee/attendance',
+          _ => '/employee/leave',
+        }),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -26,6 +33,11 @@ class EmployeeShell extends StatelessWidget {
             icon: Icon(Icons.calendar_month_outlined),
             selectedIcon: Icon(Icons.calendar_month),
             label: 'Attendance',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.event_note_outlined),
+            selectedIcon: Icon(Icons.event_note),
+            label: 'Leave',
           ),
         ],
       ),

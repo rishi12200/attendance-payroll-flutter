@@ -150,6 +150,7 @@ void main() {
       '/admin/holidays',
       '/admin/settings',
       '/admin/flagged-checkins',
+      '/admin/leaves',
     ]) {
       expect(
         routerRedirect(
@@ -185,6 +186,19 @@ void main() {
       ),
       isNull,
     );
+    for (final employeeRoute in ['/employee/leave', '/employee/leave/apply']) {
+      expect(
+        routerRedirect(
+          location: employeeRoute,
+          authLoading: false,
+          isSignedIn: true,
+          profileLoading: false,
+          profileError: false,
+          profile: admin,
+        ),
+        '/admin/dashboard',
+      );
+    }
   });
 
   testWidgets('admin Branches tab opens the registered branch screen', (

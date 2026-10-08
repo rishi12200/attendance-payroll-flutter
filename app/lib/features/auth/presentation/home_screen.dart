@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../domain/user_profile.dart';
 import '../../attendance/presentation/employee_attendance_screen.dart';
+import '../../leave/presentation/pending_leave_badge.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({required this.role, super.key});
@@ -73,6 +74,12 @@ class HomeScreen extends ConsumerWidget {
                   onTap: () => context.go('/admin/attendance'),
                 ),
                 _DashboardTile(
+                  title: 'Leave requests',
+                  icon: Icons.event_note_outlined,
+                  trailing: const PendingLeaveBadge(),
+                  onTap: () => context.go('/admin/leaves'),
+                ),
+                _DashboardTile(
                   title: 'Holidays',
                   icon: Icons.celebration_outlined,
                   onTap: () => context.go('/admin/holidays'),
@@ -98,18 +105,20 @@ class _DashboardTile extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.onTap,
+    this.trailing,
   });
 
   final String title;
   final IconData icon;
   final VoidCallback onTap;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Card(
     child: ListTile(
       leading: Icon(icon),
       title: Text(title),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: trailing ?? const Icon(Icons.chevron_right),
       onTap: onTap,
     ),
   );

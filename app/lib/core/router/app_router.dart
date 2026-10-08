@@ -19,6 +19,9 @@ import '../../features/attendance/presentation/admin_flagged_checkins_screen.dar
 import '../../features/attendance/presentation/admin_holidays_screen.dart';
 import '../../features/attendance/presentation/admin_attendance_settings_screen.dart';
 import '../../features/attendance/presentation/employee_attendance_calendar_screen.dart';
+import '../../features/leave/presentation/admin_leave_requests_screen.dart';
+import '../../features/leave/presentation/apply_leave_screen.dart';
+import '../../features/leave/presentation/my_leave_requests_screen.dart';
 import '../auth/auth_providers.dart';
 import 'router_redirect.dart';
 
@@ -86,6 +89,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const AdminFlaggedCheckinsScreen(),
           ),
           GoRoute(
+            path: '/admin/leaves',
+            builder: (context, state) => const AdminLeaveRequestsScreen(),
+          ),
+          GoRoute(
             path: '/admin/employees',
             builder: (context, state) => const EmployeeListScreen(),
             routes: [
@@ -136,6 +143,16 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'attendance',
                 builder: (context, state) =>
                     const EmployeeAttendanceCalendarScreen(),
+              ),
+              GoRoute(
+                path: 'leave',
+                builder: (context, state) => const MyLeaveRequestsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'apply',
+                    builder: (context, state) => const ApplyLeaveScreen(),
+                  ),
+                ],
               ),
             ],
           ),
