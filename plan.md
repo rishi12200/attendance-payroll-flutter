@@ -387,7 +387,7 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [x] Holidays and settings endpoints
 - [x] Admin by-date list with in and out times, hours and derived statuses
 - [x] Admin edit (status and times)
-- [ ] Employee calendar with the summary header
+- [x] Employee calendar with the summary header
 
 ### Step 6: Leave
 - [ ] Apply, list, and approve or reject endpoints with the edge-case rules above
