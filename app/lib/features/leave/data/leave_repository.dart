@@ -31,37 +31,50 @@ class ApiLeaveRepository implements LeaveRepository {
     required String fromDate,
     required String toDate,
     required String reason,
-  }) => _withApiErrors(() async => LeaveRequest.fromJson(_asJsonMap(
-    await _api.postJson('/leaves', data: {
-      'fromDate': fromDate,
-      'toDate': toDate,
-      'reason': reason,
-    }),
-  )));
+  }) => _withApiErrors(
+    () async => LeaveRequest.fromJson(
+      _asJsonMap(
+        await _api.postJson(
+          '/leaves',
+          data: {'fromDate': fromDate, 'toDate': toDate, 'reason': reason},
+        ),
+      ),
+    ),
+  );
 
   @override
-  Future<List<LeaveRequest>> myRequests(String status) =>
-      _withApiErrors(() async => _asJsonList(await _api.getJson(
-        '/leaves/me', queryParameters: {'status': status},
-      )).map(LeaveRequest.fromJson).toList(growable: false));
+  Future<List<LeaveRequest>> myRequests(String status) => _withApiErrors(
+    () async => _asJsonList(
+      await _api.getJson('/leaves/me', queryParameters: {'status': status}),
+    ).map(LeaveRequest.fromJson).toList(growable: false),
+  );
 
   @override
-  Future<LeaveRequest> cancel(String id) => _withApiErrors(() async =>
-      LeaveRequest.fromJson(_asJsonMap(await _api.postJson(
-        '/leaves/${Uri.encodeComponent(id)}/cancel',
-      ))));
+  Future<LeaveRequest> cancel(String id) => _withApiErrors(
+    () async => LeaveRequest.fromJson(
+      _asJsonMap(
+        await _api.postJson('/leaves/${Uri.encodeComponent(id)}/cancel'),
+      ),
+    ),
+  );
 
   @override
   Future<List<LeaveRequest>> adminList(String status, {String? empId}) =>
-      _withApiErrors(() async => _asJsonList(await _api.getJson(
-        '/leaves', queryParameters: {'status': status, 'empId': ?empId},
-      )).map(LeaveRequest.fromJson).toList(growable: false));
+      _withApiErrors(
+        () async => _asJsonList(
+          await _api.getJson(
+            '/leaves',
+            queryParameters: {'status': status, 'empId': ?empId},
+          ),
+        ).map(LeaveRequest.fromJson).toList(growable: false),
+      );
 
   @override
-  Future<LeaveRequest> get(String id) => _withApiErrors(() async =>
-      LeaveRequest.fromJson(_asJsonMap(await _api.getJson(
-        '/leaves/${Uri.encodeComponent(id)}',
-      ))));
+  Future<LeaveRequest> get(String id) => _withApiErrors(
+    () async => LeaveRequest.fromJson(
+      _asJsonMap(await _api.getJson('/leaves/${Uri.encodeComponent(id)}')),
+    ),
+  );
 
   @override
   Future<LeaveRequest> decide({
@@ -69,16 +82,16 @@ class ApiLeaveRepository implements LeaveRepository {
     required String decision,
     String? leaveType,
     String? note,
-  }) => _withApiErrors(() async => LeaveRequest.fromJson(_asJsonMap(
-    await _api.postJson(
-      '/leaves/${Uri.encodeComponent(id)}/decision',
-      data: {
-        'decision': decision,
-        'leaveType': ?leaveType,
-        'note': ?note,
-      },
+  }) => _withApiErrors(
+    () async => LeaveRequest.fromJson(
+      _asJsonMap(
+        await _api.postJson(
+          '/leaves/${Uri.encodeComponent(id)}/decision',
+          data: {'decision': decision, 'leaveType': ?leaveType, 'note': ?note},
+        ),
+      ),
     ),
-  )));
+  );
 }
 
 Map<String, dynamic> _asJsonMap(Object? value) {

@@ -57,9 +57,13 @@ class LeaveRequest {
 
   factory LeaveRequest.fromJson(Map<String, dynamic> json) {
     final statusValue = _string(json['status']);
-    final status = LeaveStatus.values.where((value) => value.name == statusValue).firstOrNull;
+    final status = LeaveStatus.values
+        .where((value) => value.name == statusValue)
+        .firstOrNull;
     final leaveTypeValue = _string(json['leaveType']);
-    final leaveType = LeaveType.values.where((value) => value.name == leaveTypeValue).firstOrNull;
+    final leaveType = LeaveType.values
+        .where((value) => value.name == leaveTypeValue)
+        .firstOrNull;
     return LeaveRequest(
       id: _string(json['id']) ?? '',
       empId: _string(json['empId']) ?? '',
@@ -90,7 +94,12 @@ List<String> _stringList(Object? value) => value is List
     : const [];
 
 List<SkippedDate> _skippedList(Object? value) => value is List
-    ? value.whereType<Map>().map((item) => SkippedDate.fromJson(
-        item.map((key, value) => MapEntry('$key', value)),
-      )).toList(growable: false)
+    ? value
+          .whereType<Map>()
+          .map(
+            (item) => SkippedDate.fromJson(
+              item.map((key, value) => MapEntry('$key', value)),
+            ),
+          )
+          .toList(growable: false)
     : const [];
