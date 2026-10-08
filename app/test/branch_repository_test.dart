@@ -53,6 +53,13 @@ class _FakeApi implements ApiTransport {
     if (error case final value?) throw value;
     return response;
   }
+
+  @override
+  Future<Object?> deleteJson(String path) async {
+    requests.add(_Request('DELETE', path, null, null));
+    if (error case final value?) throw value;
+    return response;
+  }
 }
 
 void main() {

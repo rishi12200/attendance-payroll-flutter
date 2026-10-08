@@ -41,6 +41,13 @@ class FakeApiTransport implements ApiTransport {
     if (error case final requestError?) throw requestError;
     return response;
   }
+
+  @override
+  Future<Object?> deleteJson(String path) async {
+    requests.add(RecordedRequest('DELETE', path, null, null));
+    if (error case final requestError?) throw requestError;
+    return response;
+  }
 }
 
 const employeeJson = <String, Object?>{

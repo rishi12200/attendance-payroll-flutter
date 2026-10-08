@@ -23,6 +23,8 @@ abstract interface class ApiTransport {
   Future<Object?> postJson(String path, {Object? data});
 
   Future<Object?> patchJson(String path, {Object? data});
+
+  Future<Object?> deleteJson(String path);
 }
 
 class ApiClient implements ProfileApi, ApiTransport {
@@ -64,6 +66,12 @@ class ApiClient implements ProfileApi, ApiTransport {
   @override
   Future<Object?> patchJson(String path, {Object? data}) async {
     final response = await dio.patch<dynamic>(path, data: data);
+    return response.data;
+  }
+
+  @override
+  Future<Object?> deleteJson(String path) async {
+    final response = await dio.delete<dynamic>(path);
     return response.data;
   }
 

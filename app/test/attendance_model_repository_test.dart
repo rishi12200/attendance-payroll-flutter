@@ -35,6 +35,11 @@ class _FakeApi implements ApiTransport {
   }
 
   @override
+  Future<Object?> deleteJson(String path) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<Object?> postJson(String path, {Object? data}) async {
     requests.add(_Request('POST', path, data, null));
     if (error case final value?) throw value;
