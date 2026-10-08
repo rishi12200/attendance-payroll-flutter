@@ -392,7 +392,7 @@ Each step ends with something you can demo and test. Do one step at a time and c
 ### Step 6: Leave
 - [x] Apply, list, and approve or reject endpoints with the edge-case rules above
 - [x] Approval writes `L` or `UL` on the requested dates
-- [ ] Flutter apply screen and admin approval screen
+- [x] Flutter apply screen and admin approval screen
 
 ### Step 7: Payroll
 - [ ] Pure payroll function with unit tests, ported from `docs/prototype.html`
