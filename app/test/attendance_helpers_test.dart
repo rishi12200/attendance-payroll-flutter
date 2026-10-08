@@ -1,6 +1,7 @@
 import 'package:app/features/attendance/domain/attendance.dart';
 import 'package:app/features/attendance/domain/attendance_helpers.dart';
 import 'package:app/features/branches/domain/branch.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Branch branch(String id, double latitude, double longitude, int radius) =>
@@ -23,41 +24,57 @@ void main() {
     expect(distance, closeTo(100, 1));
   });
 
-  test('nearest branch selects the closest and estimates accuracy tolerance', () {
-    final nearest = nearestBranch(
-      const AttendancePosition(latitude: 0, longitude: 0, accuracy: 20),
-      [branch('far', 0, 0.01, 100), branch('near', 0, 0.0009, 81)],
-    );
-    expect(nearest?.branch.id, 'near');
-    expect(nearest?.distanceMeters, closeTo(100, 1));
-    expect(nearest?.insideEstimate, isTrue);
-    expect(
-      nearestBranch(
-        const AttendancePosition(latitude: 0, longitude: 0, accuracy: 100),
-        [branch('near', 0, 0.0009, 55)],
-      )?.insideEstimate,
-      isTrue,
-    );
-    expect(
-      nearestBranch(
-        const AttendancePosition(latitude: 0, longitude: 0, accuracy: 0),
-        [branch('near', 0, 0.0009, 55)],
-      )?.insideEstimate,
-      isFalse,
-    );
-    expect(
-      nearestBranch(
-        const AttendancePosition(latitude: 0, longitude: 0, accuracy: 0),
-        [],
-      ),
-      isNull,
-    );
-  });
+  test(
+    'nearest branch selects the closest and estimates accuracy tolerance',
+    () {
+      final nearest = nearestBranch(
+        const AttendancePosition(latitude: 0, longitude: 0, accuracy: 20),
+        [branch('far', 0, 0.01, 100), branch('near', 0, 0.0009, 81)],
+      );
+      expect(nearest?.branch.id, 'near');
+      expect(nearest?.distanceMeters, closeTo(100, 1));
+      expect(nearest?.insideEstimate, isTrue);
+      expect(
+        nearestBranch(
+          const AttendancePosition(latitude: 0, longitude: 0, accuracy: 100),
+          [branch('near', 0, 0.0009, 55)],
+        )?.insideEstimate,
+        isTrue,
+      );
+      expect(
+        nearestBranch(
+          const AttendancePosition(latitude: 0, longitude: 0, accuracy: 0),
+          [branch('near', 0, 0.0009, 55)],
+        )?.insideEstimate,
+        isFalse,
+      );
+      expect(
+        nearestBranch(
+          const AttendancePosition(latitude: 0, longitude: 0, accuracy: 0),
+          [],
+        ),
+        isNull,
+      );
+    },
+  );
 
   test('formats UTC times in IST across the date boundary', () {
     expect(formatIstTime('2026-10-07T18:29:00.000Z'), '11:59 PM');
     expect(formatIstTime('2026-10-07T18:30:00.000Z'), '12:00 AM');
     expect(formatIstTime('2026-10-07T06:05:00.000Z'), '11:35 AM');
+  });
+
+  test('converts dates and wall-clock times using the fixed IST offset', () {
+    expect(istDateOf('2026-10-07T19:00:00.000Z'), '2026-10-08');
+    expect(formatIstDateLong('2026-10-07T19:00:00.000Z'), 'Thu, 8 Oct 2026');
+    expect(
+      istToUtcIso('2026-10-08', const TimeOfDay(hour: 0, minute: 30)),
+      '2026-10-07T19:00:00.000Z',
+    );
+    expect(
+      istToUtcIso('2026-10-08', const TimeOfDay(hour: 9, minute: 0)),
+      '2026-10-08T03:30:00.000Z',
+    );
   });
 
   test('formats worked minutes including less than a minute', () {
@@ -86,39 +103,30 @@ void main() {
     final open = openCheckIn(days, '2026-10-08T12:00:00.000Z');
     expect(open?.date, '2026-10-08');
     expect(
-      openCheckIn(
-        {
-          '2026-10-07': const AttendanceDay(
-            status: 'P',
-            inTime: '2026-10-07T10:00:00.000Z',
-          ),
-        },
-        '2026-10-08T10:00:00.000Z',
-      ),
+      openCheckIn({
+        '2026-10-07': const AttendanceDay(
+          status: 'P',
+          inTime: '2026-10-07T10:00:00.000Z',
+        ),
+      }, '2026-10-08T10:00:00.000Z'),
       isNull,
     );
     expect(
-      openCheckIn(
-        {
-          '2026-10-08': const AttendanceDay(
-            status: 'P',
-            inTime: '2026-10-08T13:00:00.000Z',
-          ),
-        },
-        '2026-10-08T12:00:00.000Z',
-      ),
+      openCheckIn({
+        '2026-10-08': const AttendanceDay(
+          status: 'P',
+          inTime: '2026-10-08T13:00:00.000Z',
+        ),
+      }, '2026-10-08T12:00:00.000Z'),
       isNull,
     );
     expect(
-      openCheckIn(
-        {
-          '2026-09-30': const AttendanceDay(
-            status: 'P',
-            inTime: '2026-09-30T18:00:00.000Z',
-          ),
-        },
-        '2026-10-01T08:00:00.000Z',
-      )?.date,
+      openCheckIn({
+        '2026-09-30': const AttendanceDay(
+          status: 'P',
+          inTime: '2026-09-30T18:00:00.000Z',
+        ),
+      }, '2026-10-01T08:00:00.000Z')?.date,
       '2026-09-30',
     );
   });

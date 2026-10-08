@@ -1,11 +1,56 @@
 import 'dart:math' as math;
 
+import 'package:flutter/material.dart' show TimeOfDay;
+
 import '../../branches/domain/branch.dart';
 import 'attendance.dart';
 
 const _earthRadiusMeters = 6371000.0;
 const _istOffset = Duration(hours: 5, minutes: 30);
 const _day = Duration(days: 1);
+
+String istDateOf(String isoUtc) {
+  final ist = DateTime.parse(isoUtc).toUtc().add(_istOffset);
+  return '${ist.year.toString().padLeft(4, '0')}-'
+      '${ist.month.toString().padLeft(2, '0')}-'
+      '${ist.day.toString().padLeft(2, '0')}';
+}
+
+String formatIstDateLong(String isoUtc) {
+  final date = DateTime.parse('${istDateOf(isoUtc)}T00:00:00Z');
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${weekdays[date.weekday - 1]}, ${date.day} '
+      '${months[date.month - 1]} ${date.year}';
+}
+
+String istToUtcIso(String date, TimeOfDay time) {
+  final parts = date.split('-').map(int.parse).toList(growable: false);
+  if (parts.length != 3) {
+    throw const FormatException('Expected an IST date in YYYY-MM-DD format.');
+  }
+  final istWallClock = DateTime.utc(
+    parts[0],
+    parts[1],
+    parts[2],
+    time.hour,
+    time.minute,
+  );
+  return istWallClock.subtract(_istOffset).toIso8601String();
+}
 
 double haversineDistanceMeters(
   double latitudeA,
