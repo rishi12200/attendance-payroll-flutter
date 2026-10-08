@@ -7,12 +7,22 @@ import { errorHandler } from './middleware/error-handler';
 import { createEmployeesRouter, type EmployeeOperations } from './routes/employees';
 import { createBranchesRouter, type BranchOperations } from './routes/branches';
 import { createAttendanceRouter, type AttendanceOperations } from './routes/attendance';
+import { createSettingsRouter, type SettingsOperations } from './routes/settings';
+import { createHolidaysRouter, type HolidayOperations } from './routes/holidays';
+import {
+  createAttendanceViewsRouter,
+  type AttendanceViewsOperations,
+} from './routes/attendance-views';
+import { createCheckinsRouter } from './routes/checkins';
 
 export function createApp(
   dependencies: MeRouteDependencies & {
     employees?: EmployeeOperations;
     branches?: BranchOperations;
     attendance?: AttendanceOperations;
+    attendanceViews?: AttendanceViewsOperations;
+    settings?: SettingsOperations;
+    holidays?: HolidayOperations;
   },
 ) {
   const app = express();
@@ -46,6 +56,40 @@ export function createApp(
       createAttendanceRouter({
         verifyIdToken: dependencies.verifyIdToken,
         attendance: dependencies.attendance,
+      }),
+    );
+  }
+  if (dependencies.attendanceViews) {
+    app.use(
+      '/attendance',
+      createAttendanceViewsRouter({
+        verifyIdToken: dependencies.verifyIdToken,
+        views: dependencies.attendanceViews,
+      }),
+    );
+    app.use(
+      '/checkins',
+      createCheckinsRouter({
+        verifyIdToken: dependencies.verifyIdToken,
+        views: dependencies.attendanceViews,
+      }),
+    );
+  }
+  if (dependencies.settings) {
+    app.use(
+      '/settings',
+      createSettingsRouter({
+        verifyIdToken: dependencies.verifyIdToken,
+        settings: dependencies.settings,
+      }),
+    );
+  }
+  if (dependencies.holidays) {
+    app.use(
+      '/holidays',
+      createHolidaysRouter({
+        verifyIdToken: dependencies.verifyIdToken,
+        holidays: dependencies.holidays,
       }),
     );
   }

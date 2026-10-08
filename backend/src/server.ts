@@ -8,10 +8,15 @@ import { BranchService } from './services/branch-service';
 import { FirestoreBranchStore } from './services/firestore-branch-store';
 import { AttendanceService } from './services/attendance-service';
 import { FirestoreAttendanceStore } from './services/firestore-attendance-store';
+import { FirestoreAttendanceViewsStore } from './services/firestore-attendance-views-store';
+import { AttendanceViewsService } from './services/attendance-views-service';
+import { SettingsService } from './services/settings-service';
+import { HolidayService } from './services/holiday-service';
 
 const employeeStore = new FirestoreEmployeeStore(db);
 const branchStore = new FirestoreBranchStore(db);
 const attendanceStore = new FirestoreAttendanceStore(db);
+const attendanceViewsStore = new FirestoreAttendanceViewsStore(db);
 const app = createApp({
   verifyIdToken: (token, checkRevoked) => auth.verifyIdToken(token, checkRevoked),
   getProfile: getUserProfile,
@@ -26,6 +31,13 @@ const app = createApp({
     employees: employeeStore,
     branches: branchStore,
   }),
+  attendanceViews: new AttendanceViewsService({
+    store: attendanceViewsStore,
+    employees: employeeStore,
+    branches: branchStore,
+  }),
+  settings: new SettingsService(attendanceViewsStore),
+  holidays: new HolidayService(attendanceViewsStore),
 });
 
 app.listen(env.PORT, () => {

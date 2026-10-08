@@ -17,6 +17,9 @@ test('workedMinutes floors partial minutes and never returns a negative value', 
 
 test('attendance settings use defaults for a missing document or fields', () => {
   assert.deepEqual(attendanceSettingsFromDocument(undefined), {
+    companyName: '',
+    weeklyOffDays: [0],
+    perDayBasis: 'calendar',
     maxAccuracyMeters: 100,
     rejectMockLocation: true,
     enforceCheckoutLocation: false,
@@ -30,6 +33,9 @@ test('attendance settings use defaults for a missing document or fields', () => 
       enforceCheckoutLocation: true,
     }),
     {
+      companyName: '',
+      weeklyOffDays: [0],
+      perDayBasis: 'calendar',
       maxAccuracyMeters: 75,
       rejectMockLocation: true,
       enforceCheckoutLocation: true,
