@@ -9,12 +9,17 @@ final branchRepositoryProvider = Provider<BranchRepository>(
 );
 
 final branchesProvider = FutureProvider.family<List<Branch>, String>(
-  (ref, status) =>
-      ref.watch(branchRepositoryProvider).listBranches(status: status),
+  (ref, status) {
+    ref.watch(signedInUidProvider);
+    return ref.watch(branchRepositoryProvider).listBranches(status: status);
+  },
   retry: (_, _) => null,
 );
 
 final branchProvider = FutureProvider.family<Branch, String>(
-  (ref, id) => ref.watch(branchRepositoryProvider).getBranch(id),
+  (ref, id) {
+    ref.watch(signedInUidProvider);
+    return ref.watch(branchRepositoryProvider).getBranch(id);
+  },
   retry: (_, _) => null,
 );

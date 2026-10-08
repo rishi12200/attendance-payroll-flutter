@@ -197,19 +197,23 @@ void main() {
         overrides: [
           authStateProvider.overrideWith(
             (ref) => Stream.value(
-              const AuthIdentity(uid: 'employee-1', email: 'employee@example.com'),
+              const AuthIdentity(
+                uid: 'employee-1',
+                email: 'employee@example.com',
+              ),
             ),
           ),
           currentProfileProvider.overrideWith(
             (ref) async => profile(UserRole.employee),
           ),
+          signedInUidProvider.overrideWithValue('employee-1'),
           attendanceControllerProvider.overrideWith(
             _RouterAttendanceController.new,
           ),
-          employeeBranchesProvider.overrideWith((ref) async => <Branch>[]),
-          locationEstimateProvider.overrideWith(
-            (ref) async => const LocationEstimateNoBranches(),
-          ),
+          employeeBranchesProvider('employee-1')
+              .overrideWith((ref) async => <Branch>[]),
+          locationEstimateProvider('employee-1')
+              .overrideWith((ref) async => const LocationEstimateNoBranches()),
         ],
         child: const _RouterApp(),
       ),

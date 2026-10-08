@@ -8,6 +8,8 @@ final attendanceRepositoryProvider = Provider<AttendanceRepository>(
   (ref) => ApiAttendanceRepository(ref.watch(apiClientProvider)),
 );
 
-final installIdStoreProvider = Provider<InstallIdStore>(
-  (ref) => const SharedPreferencesInstallIdStore(),
-);
+final installIdStoreProvider =
+    Provider.family<InstallIdStore, String>((ref, uid) {
+      ref.watch(signedInUidProvider);
+      return const SharedPreferencesInstallIdStore();
+    });

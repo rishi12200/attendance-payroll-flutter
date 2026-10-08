@@ -130,9 +130,14 @@ Future<_FakeLocationService> _pumpScreen(
             role: UserRole.employee,
           ),
         ),
+        signedInUidProvider.overrideWithValue('employee-1'),
         attendanceRepositoryProvider.overrideWithValue(repository),
-        installIdStoreProvider.overrideWithValue(_FakeInstallIdStore()),
-        employeeBranchesProvider.overrideWith((ref) async => branches),
+        installIdStoreProvider('employee-1').overrideWithValue(
+          _FakeInstallIdStore(),
+        ),
+        employeeBranchesProvider('employee-1').overrideWith(
+          (ref) async => branches,
+        ),
         locationServiceProvider.overrideWithValue(locationService),
       ],
       child: const MaterialApp(home: EmployeeAttendanceScreen()),

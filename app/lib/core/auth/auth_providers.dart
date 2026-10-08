@@ -21,6 +21,10 @@ final authStateProvider = StreamProvider<AuthIdentity?>((ref) {
   return ref.watch(authRepositoryProvider).authStateChanges;
 });
 
+final signedInUidProvider = Provider<String?>((ref) {
+  return ref.watch(authStateProvider).asData?.value?.uid;
+});
+
 class AuthMessageController extends Notifier<String?> {
   @override
   String? build() => null;

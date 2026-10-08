@@ -2,19 +2,25 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/auth_providers.dart';
 import '../../../core/api/app_exception.dart';
 import '../../../features/branches/data/branches_providers.dart';
 import '../../../features/branches/data/location_providers.dart';
+import '../../../features/branches/domain/branch.dart';
 import '../../../features/branches/domain/location_service.dart';
 import '../data/attendance_providers.dart';
 import '../data/attendance_repository.dart';
-import '../data/install_id_store.dart';
 import 'attendance.dart';
 import 'attendance_error_messages.dart';
 import 'attendance_helpers.dart';
 
-final employeeBranchesProvider = FutureProvider(
-  (ref) => ref.watch(branchRepositoryProvider).listBranches(),
+final employeeBranchesProvider = FutureProvider.family<List<Branch>, String>(
+  (ref, uid) {
+    if (ref.watch(signedInUidProvider) != uid) {
+      return const <Branch>[];
+    }
+    return ref.watch(branchRepositoryProvider).listBranches();
+  },
   retry: (_, _) => null,
 );
 
@@ -127,19 +133,31 @@ class AttendanceLoadError extends AttendanceHomeState {
 }
 
 class AttendanceController extends Notifier<AttendanceHomeState> {
-  bool _punchInProgress = false;
+  String? _punchInProgressUid;
+  String _uid = '';
 
   AttendanceRepository get _repository =>
       ref.read(attendanceRepositoryProvider);
-  InstallIdStore get _installIdStore => ref.read(installIdStoreProvider);
   LocationService get _locationService => ref.read(locationServiceProvider);
+
+  bool _isActiveUser(String uid) => ref.read(signedInUidProvider) == uid;
+
   @override
   AttendanceHomeState build() {
-    scheduleMicrotask(refresh);
+    final previousUid = _uid;
+    _uid = ref.watch(signedInUidProvider) ?? '';
+    if (_uid.isNotEmpty && _uid != previousUid) {
+      scheduleMicrotask(refresh);
+    }
     return const AttendanceLoading();
   }
 
   Future<void> refresh({bool allowWhileWorking = false}) async {
+    final requestUid = _uid;
+    if (requestUid.isEmpty || !_isActiveUser(requestUid)) {
+      state = const AttendanceLoading();
+      return;
+    }
     final stateBeforeLoad = state;
     if (stateBeforeLoad.isWorking && !allowWhileWorking) return;
     try {
@@ -169,12 +187,14 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         days.addAll(previous.days);
       }
       try {
-        await ref.read(employeeBranchesProvider.future);
+        await ref.read(employeeBranchesProvider(requestUid).future);
       } catch (_) {
         // Attendance state remains usable if branch names are unavailable.
       }
+      if (!_isActiveUser(requestUid)) return;
       state = _stateFromServer(current, days);
     } catch (error) {
+      if (!_isActiveUser(requestUid)) return;
       state = AttendanceLoadError(error);
     }
   }
@@ -184,16 +204,20 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
   Future<void> checkOut() => _punch(checkingIn: false);
 
   Future<void> _punch({required bool checkingIn}) async {
-    if (_punchInProgress ||
+    final punchUid = _uid;
+    if (punchUid.isEmpty ||
+        !_isActiveUser(punchUid) ||
+        _punchInProgressUid == punchUid ||
         state.isWorking ||
         state is AttendanceLoading ||
         state is AttendanceLoadError) {
       return;
     }
-    _punchInProgress = true;
+    _punchInProgressUid = punchUid;
     state = _setWorking(state, true, clearFeedback: true);
     try {
       final positionResult = await _locationService.getCurrentPosition();
+      if (!_isActiveUser(punchUid)) return;
       if (positionResult case LocationFailure(:final reason)) {
         state = _setFeedback(
           _setWorking(state, false),
@@ -204,7 +228,10 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
       }
 
       final position = positionResult as LocationSuccess;
-      final deviceId = await _installIdStore.getOrCreate();
+      final deviceId = await ref
+          .read(installIdStoreProvider(punchUid))
+          .getOrCreate();
+      if (!_isActiveUser(punchUid)) return;
       final payload = <String, Object?>{
         'lat': position.latitude,
         'lng': position.longitude,
@@ -217,8 +244,10 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
       } else {
         await _repository.checkOut(payload);
       }
+      if (!_isActiveUser(punchUid)) return;
       await refresh(allowWhileWorking: true);
     } on AppException catch (error) {
+      if (!_isActiveUser(punchUid)) return;
       if (const {
         'ALREADY_CHECKED_IN',
         'ALREADY_CHECKED_OUT',
@@ -233,14 +262,17 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         attendanceErrorMessage(error),
       );
     } catch (error) {
+      if (!_isActiveUser(punchUid)) return;
       state = _setWorking(state, false);
       state = _setFeedback(
         state,
         'Could not complete attendance. Please try again.',
       );
     } finally {
-      _punchInProgress = false;
-      if (state.isWorking) state = _setWorking(state, false);
+      if (_punchInProgressUid == punchUid) _punchInProgressUid = null;
+      if (_isActiveUser(punchUid) && state.isWorking) {
+        state = _setWorking(state, false);
+      }
     }
   }
 
@@ -261,16 +293,13 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
     }
 
     final todayDay = days[current.today];
-    final completed = todayDay != null && todayDay.inTime != null
-        ? todayDay
-        : _mostRecentCompletedWithinADay(days, current.serverTime);
-    if (completed?.inTime != null && completed?.outTime != null) {
+    if (todayDay?.inTime != null && todayDay?.outTime != null) {
       return AttendanceCompleted(
         today: current.today,
-        date: _dateOf(days, completed!),
-        inTime: completed.inTime!,
-        outTime: completed.outTime!,
-        workedMinutes: completed.workedMinutes ?? 0,
+        date: current.today,
+        inTime: todayDay!.inTime!,
+        outTime: todayDay.outTime!,
+        workedMinutes: todayDay.workedMinutes ?? 0,
         serverTime: current.serverTime,
       );
     }
@@ -280,35 +309,9 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
     );
   }
 
-  AttendanceDay? _mostRecentCompletedWithinADay(
-    Map<String, AttendanceDay> days,
-    String serverTime,
-  ) {
-    final now = DateTime.parse(serverTime).toUtc();
-    AttendanceDay? newest;
-    DateTime? newestTime;
-    for (final day in days.values) {
-      if (day.inTime == null || day.outTime == null) continue;
-      final inTime = DateTime.tryParse(day.inTime!)?.toUtc();
-      if (inTime == null) continue;
-      final elapsed = now.difference(inTime);
-      if (elapsed.isNegative || elapsed >= const Duration(days: 1)) continue;
-      if (newestTime == null || inTime.isAfter(newestTime)) {
-        newest = day;
-        newestTime = inTime;
-      }
-    }
-    return newest;
-  }
-
-  String _dateOf(Map<String, AttendanceDay> days, AttendanceDay day) =>
-      days.entries
-          .firstWhere((entry) => identical(entry.value, day))
-          .key;
-
   String _branchName(String? branchId) {
     if (branchId == null) return 'your assigned branch';
-    final branches = ref.read(employeeBranchesProvider).asData?.value;
+    final branches = ref.read(employeeBranchesProvider(_uid)).asData?.value;
     for (final branch in branches ?? const []) {
       if (branch.id == branchId) return branch.name;
     }

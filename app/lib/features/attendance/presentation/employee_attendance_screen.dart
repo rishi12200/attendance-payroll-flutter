@@ -35,16 +35,18 @@ class _EmployeeAttendanceScreenState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      final uid = ref.read(signedInUidProvider);
+      if (uid == null) return;
       ref.read(attendanceControllerProvider.notifier).refresh();
-      ref.invalidate(locationEstimateProvider);
+      ref.invalidate(locationEstimateProvider(uid));
     }
   }
 
-  Future<void> _refresh() async {
-    ref.invalidate(employeeBranchesProvider);
+  Future<void> _refresh(String uid) async {
+    ref.invalidate(employeeBranchesProvider(uid));
     await Future.wait([
       ref.read(attendanceControllerProvider.notifier).refresh(),
-      ref.refresh(locationEstimateProvider.future).then<void>((_) {}),
+      ref.refresh(locationEstimateProvider(uid).future).then<void>((_) {}),
     ]);
   }
 
@@ -62,8 +64,13 @@ class _EmployeeAttendanceScreenState
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(currentProfileProvider).asData?.value;
-    final state = ref.watch(attendanceControllerProvider);
-    final estimate = ref.watch(locationEstimateProvider);
+    final uid = ref.watch(signedInUidProvider);
+    final state = uid == null
+        ? const AttendanceLoading()
+        : ref.watch(attendanceControllerProvider);
+    final estimate = uid == null
+        ? const AsyncLoading<LocationEstimate>()
+        : ref.watch(locationEstimateProvider(uid));
 
     return Scaffold(
       appBar: AppBar(
@@ -78,7 +85,7 @@ class _EmployeeAttendanceScreenState
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _refresh,
+        onRefresh: uid == null ? () async {} : () => _refresh(uid),
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -93,9 +100,9 @@ class _EmployeeAttendanceScreenState
                     AttendanceCompleted(:final today))
               Text(_formatDate(today)),
             const SizedBox(height: 16),
-            _buildAttendanceContent(context, state, estimate),
+            _buildAttendanceContent(context, state, estimate, uid),
             const SizedBox(height: 16),
-            _buildDistanceCard(context, estimate),
+            _buildDistanceCard(context, estimate, uid),
             if (state.feedback != null) ...[
               const SizedBox(height: 16),
               _buildFeedback(context, state),
@@ -110,6 +117,7 @@ class _EmployeeAttendanceScreenState
     BuildContext context,
     AttendanceHomeState state,
     AsyncValue<LocationEstimate> estimate,
+    String? uid,
   ) {
     if (state is AttendanceLoading) {
       return const Center(
@@ -138,9 +146,14 @@ class _EmployeeAttendanceScreenState
       );
     }
 
-    final isNoBranch = ref
-        .watch(employeeBranchesProvider)
-        .maybeWhen(data: (branches) => branches.isEmpty, orElse: () => false);
+    final isNoBranch =
+        uid != null &&
+        ref
+            .watch(employeeBranchesProvider(uid))
+            .maybeWhen(
+              data: (branches) => branches.isEmpty,
+              orElse: () => false,
+            );
     final card = switch (state) {
       AttendanceNotCheckedIn() => _statusCard(
         context,
@@ -181,6 +194,7 @@ class _EmployeeAttendanceScreenState
         : FilledButton.icon(
             onPressed: canPunch
                 ? () {
+                    if (uid == null) return;
                     final controller = ref.read(
                       attendanceControllerProvider.notifier,
                     );
@@ -262,6 +276,7 @@ class _EmployeeAttendanceScreenState
   Widget _buildDistanceCard(
     BuildContext context,
     AsyncValue<LocationEstimate> estimate,
+    String? uid,
   ) => Card(
     child: Padding(
       padding: const EdgeInsets.all(16),
@@ -317,10 +332,12 @@ class _EmployeeAttendanceScreenState
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: () {
-                ref.invalidate(employeeBranchesProvider);
-                ref.invalidate(locationEstimateProvider);
-              },
+              onPressed: uid == null
+                  ? null
+                  : () {
+                      ref.invalidate(employeeBranchesProvider(uid));
+                      ref.invalidate(locationEstimateProvider(uid));
+                    },
               icon: const Icon(Icons.my_location),
               label: const Text('Refresh location'),
             ),

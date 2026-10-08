@@ -1,12 +1,17 @@
 import 'dart:async';
 
 import 'package:app/core/api/app_exception.dart';
+import 'package:app/core/auth/auth_providers.dart';
+import 'package:app/features/auth/domain/auth_repository.dart';
 import 'package:app/features/attendance/data/attendance_providers.dart';
 import 'package:app/features/attendance/data/attendance_repository.dart';
 import 'package:app/features/attendance/data/install_id_store.dart';
 import 'package:app/features/attendance/domain/attendance.dart';
 import 'package:app/features/attendance/domain/attendance_controller.dart';
 import 'package:app/features/attendance/domain/attendance_error_messages.dart';
+import 'package:app/features/attendance/presentation/location_estimate.dart';
+import 'package:app/features/branches/data/branch_repository.dart';
+import 'package:app/features/branches/data/branches_providers.dart';
 import 'package:app/features/branches/data/location_providers.dart';
 import 'package:app/features/branches/domain/branch.dart';
 import 'package:app/features/branches/domain/location_service.dart';
@@ -14,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _position = LocationSuccess(latitude: 13, longitude: 80, accuracy: 10);
+const _testUid = 'employee-test';
 
 const _branch = Branch(
   id: 'branch-1',
@@ -63,9 +69,9 @@ class _FakeRepository implements AttendanceRepository {
     if (punchError case final error?) throw error;
     return const CheckOutResult(
       date: '2026-10-07',
-      inTime: '2026-10-07T09:00:00.000Z',
-      outTime: '2026-10-07T17:00:00.000Z',
-      workedMinutes: 480,
+      inTime: '2026-10-07T22:00:00.000Z',
+      outTime: '2026-10-07T23:00:00.000Z',
+      workedMinutes: 60,
       branchId: 'branch-1',
       branchName: 'Chennai',
       distanceMeters: 0,
@@ -99,6 +105,33 @@ class _FakeInstallIdStore implements InstallIdStore {
   Future<String> getOrCreate() async => 'stable-install-id';
 }
 
+class _ScopedBranchRepository implements BranchRepository {
+  _ScopedBranchRepository(this.activeUid);
+
+  final String? Function() activeUid;
+
+  @override
+  Future<List<Branch>> listBranches({String status = 'active'}) async =>
+      activeUid() == 'employee-one' ? [_branch] : [];
+
+  @override
+  Future<Branch> getBranch(String id) => throw UnimplementedError();
+
+  @override
+  Future<Branch> createBranch(Map<String, Object?> fields) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Branch> updateBranch(String id, Map<String, Object?> fields) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Branch> deactivate(String id) => throw UnimplementedError();
+
+  @override
+  Future<Branch> reactivate(String id) => throw UnimplementedError();
+}
+
 MonthAttendance _month({
   String month = '2026-10',
   String today = '2026-10-07',
@@ -118,8 +151,9 @@ ProviderContainer _container({
   overrides: [
     attendanceRepositoryProvider.overrideWithValue(repository),
     locationServiceProvider.overrideWithValue(location),
-    installIdStoreProvider.overrideWithValue(_FakeInstallIdStore()),
-    employeeBranchesProvider.overrideWith((ref) async => [_branch]),
+    signedInUidProvider.overrideWithValue(_testUid),
+    installIdStoreProvider(_testUid).overrideWithValue(_FakeInstallIdStore()),
+    employeeBranchesProvider(_testUid).overrideWith((ref) async => [_branch]),
   ],
 );
 
@@ -133,7 +167,247 @@ Future<void> _settleInitialLoad(ProviderContainer container) async {
   fail('Attendance controller did not finish initial loading.');
 }
 
+Future<void> _waitForUid(ProviderContainer container, String? expected) async {
+  for (var attempt = 0; attempt < 20; attempt++) {
+    await Future<void>.delayed(Duration.zero);
+    if (container.read(signedInUidProvider) == expected) return;
+  }
+  fail('Signed-in uid did not change to $expected.');
+}
+
 void main() {
+  test(
+    'yesterday completed attendance does not complete server today',
+    () async {
+      final container = _container(
+        repository: _FakeRepository([
+          _month(
+            today: '2026-10-08',
+            serverTime: '2026-10-08T09:00:00.000Z',
+            days: {
+              '2026-10-07': const AttendanceDay(
+                status: 'P',
+                inTime: '2026-10-07T15:00:00.000Z',
+                outTime: '2026-10-07T16:00:00.000Z',
+                workedMinutes: 60,
+              ),
+            },
+          ),
+        ]),
+        location: _FakeLocationService(_position),
+      );
+      addTearDown(container.dispose);
+
+      await _settleInitialLoad(container);
+
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceNotCheckedIn>(),
+      );
+    },
+  );
+
+  test('empty days means not checked in for server today', () async {
+    final container = _container(
+      repository: _FakeRepository([
+        _month(today: '2026-10-08', serverTime: '2026-10-08T09:00:00.000Z'),
+      ]),
+      location: _FakeLocationService(_position),
+    );
+    addTearDown(container.dispose);
+
+    await _settleInitialLoad(container);
+
+    expect(
+      container.read(attendanceControllerProvider),
+      isA<AttendanceNotCheckedIn>(),
+    );
+  });
+
+  test('today completed attendance restores completed state', () async {
+    final container = _container(
+      repository: _FakeRepository([
+        _month(
+          today: '2026-10-08',
+          serverTime: '2026-10-08T17:00:00.000Z',
+          days: {
+            '2026-10-08': const AttendanceDay(
+              status: 'P',
+              inTime: '2026-10-08T09:00:00.000Z',
+              outTime: '2026-10-08T17:00:00.000Z',
+              workedMinutes: 480,
+            ),
+          },
+        ),
+      ]),
+      location: _FakeLocationService(_position),
+    );
+    addTearDown(container.dispose);
+
+    await _settleInitialLoad(container);
+
+    expect(
+      container.read(attendanceControllerProvider),
+      isA<AttendanceCompleted>(),
+    );
+  });
+
+  test('yesterday open attendance under 24 hours stays checked in', () async {
+    final container = _container(
+      repository: _FakeRepository([
+        _month(
+          today: '2026-10-08',
+          serverTime: '2026-10-08T09:00:00.000Z',
+          days: {
+            '2026-10-07': const AttendanceDay(
+              status: 'P',
+              inTime: '2026-10-07T10:00:00.000Z',
+              inBranchId: 'branch-1',
+            ),
+          },
+        ),
+      ]),
+      location: _FakeLocationService(_position),
+    );
+    addTearDown(container.dispose);
+
+    await _settleInitialLoad(container);
+
+    expect(
+      container.read(attendanceControllerProvider),
+      isA<AttendanceCheckedIn>(),
+    );
+  });
+
+  test(
+    'yesterday open attendance older than 24 hours is not checked in',
+    () async {
+      final container = _container(
+        repository: _FakeRepository([
+          _month(
+            today: '2026-10-08',
+            serverTime: '2026-10-08T11:00:00.000Z',
+            days: {
+              '2026-10-07': const AttendanceDay(
+                status: 'P',
+                inTime: '2026-10-07T10:00:00.000Z',
+                inBranchId: 'branch-1',
+              ),
+            },
+          ),
+        ]),
+        location: _FakeLocationService(_position),
+      );
+      addTearDown(container.dispose);
+
+      await _settleInitialLoad(container);
+
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceNotCheckedIn>(),
+      );
+    },
+  );
+
+  test(
+    'attendance, branch and location state reset when the user changes',
+    () async {
+      final authChanges = StreamController<AuthIdentity?>.broadcast();
+      final completedMonth = _month(
+        today: '2026-10-08',
+        serverTime: '2026-10-08T17:00:00.000Z',
+        days: {
+          '2026-10-08': const AttendanceDay(
+            status: 'P',
+            inTime: '2026-10-08T09:00:00.000Z',
+            outTime: '2026-10-08T17:00:00.000Z',
+            workedMinutes: 480,
+          ),
+        },
+      );
+      final emptyMonth = _month(
+        today: '2026-10-08',
+        serverTime: '2026-10-08T17:00:00.000Z',
+      );
+      final repository = _FakeRepository([
+        completedMonth,
+        completedMonth,
+        emptyMonth,
+        emptyMonth,
+      ]);
+      late ProviderContainer container;
+      container = ProviderContainer(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authChanges.stream),
+          attendanceRepositoryProvider.overrideWithValue(repository),
+          branchRepositoryProvider.overrideWithValue(
+            _ScopedBranchRepository(() => container.read(signedInUidProvider)),
+          ),
+          installIdStoreProvider('employee-one')
+              .overrideWithValue(_FakeInstallIdStore()),
+          installIdStoreProvider('employee-two')
+              .overrideWithValue(_FakeInstallIdStore()),
+          locationServiceProvider.overrideWithValue(
+            _FakeLocationService(_position),
+          ),
+        ],
+      );
+      final uidSubscription = container.listen(signedInUidProvider, (_, _) {});
+      addTearDown(() async {
+        uidSubscription.close();
+        container.dispose();
+        await authChanges.close();
+      });
+
+      authChanges.add(
+        const AuthIdentity(uid: 'employee-one', email: 'one@example.com'),
+      );
+      await _waitForUid(container, 'employee-one');
+      await _settleInitialLoad(container);
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceCompleted>(),
+      );
+      expect(
+        await container.read(employeeBranchesProvider('employee-one').future),
+        [_branch],
+      );
+      expect(
+        await container.read(locationEstimateProvider('employee-one').future),
+        isA<LocationEstimateAvailable>(),
+      );
+
+      authChanges.add(null);
+      await _waitForUid(container, null);
+      authChanges.add(
+        const AuthIdentity(uid: 'employee-two', email: 'two@example.com'),
+      );
+      await _waitForUid(container, 'employee-two');
+      await _settleInitialLoad(container);
+
+      expect(
+        container.read(attendanceControllerProvider),
+        isA<AttendanceNotCheckedIn>(),
+      );
+      expect(
+        await container.read(employeeBranchesProvider('employee-two').future),
+        isEmpty,
+      );
+      expect(
+        await container.read(locationEstimateProvider('employee-two').future),
+        isA<LocationEstimateNoBranches>(),
+      );
+      expect(
+        await container.read(employeeBranchesProvider('employee-one').future),
+        isEmpty,
+      );
+      expect(
+        await container.read(locationEstimateProvider('employee-one').future),
+        isA<LocationEstimateNoBranches>(),
+      );
+    },
+  );
+
   test(
     'initial load uses server date and restores a not-checked-in state',
     () async {
@@ -254,7 +528,7 @@ void main() {
       expect(repository.payloads.single['deviceId'], 'stable-install-id');
       expect(
         container.read(attendanceControllerProvider),
-        isA<AttendanceCompleted>(),
+        isA<AttendanceNotCheckedIn>(),
       );
     },
   );
