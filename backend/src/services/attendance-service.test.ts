@@ -172,6 +172,29 @@ test('check-in persists the accepted punch and responds with the stored time', a
   assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-10']?.source, 'app');
 });
 
+test('check-in replaces paid or unpaid leave with present from the app', async () => {
+  for (const status of ['L', 'UL'] as const) {
+    const { store, service: attendance } = service();
+    store.attendance.set('2026-10_emp-1', {
+      empId: 'emp-1',
+      month: '2026-10',
+      days: {
+        '2026-10-10': {
+          status,
+          source: 'leave',
+          leaveRequestId: 'leave-1',
+        },
+      },
+    });
+
+    await attendance.checkIn(caller, input);
+
+    const day = store.attendance.get('2026-10_emp-1')?.days['2026-10-10'];
+    assert.equal(day?.status, 'P');
+    assert.equal(day?.source, 'app');
+  }
+});
+
 test('duplicate and racing check-ins cannot overwrite an existing punch', async () => {
   const { store, service: attendance } = service();
   await attendance.checkIn(caller, input);

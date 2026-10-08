@@ -20,6 +20,7 @@ export interface StoredAttendanceDay {
   inBranchId?: unknown;
   outBranchId?: unknown;
   source?: unknown;
+  leaveRequestId?: unknown;
   editedBy?: unknown;
   editedAt?: unknown;
   [key: string]: unknown;
@@ -37,6 +38,7 @@ export interface DayEntry {
   inBranchId?: unknown;
   outBranchId?: unknown;
   source?: unknown;
+  leaveRequestId?: unknown;
   editedBy?: unknown;
   editedAt?: unknown;
 }
@@ -69,6 +71,7 @@ const storedFields = [
   'inBranchId',
   'outBranchId',
   'source',
+  'leaveRequestId',
   'editedBy',
   'editedAt',
 ] as const;

@@ -134,3 +134,28 @@ test('empty map and summary account for every date exactly once', () => {
   );
   assert.equal(summary.payableDays, summary.daysInMonth - summary.lop);
 });
+
+test('calendar includes the leave request id and summarizes paid and unpaid leave', () => {
+  const result = calendar({
+    month: '2028-02',
+    today: '2028-02-01',
+    weeklyOffDays: [],
+    days: {
+      '2028-02-01': {
+        status: 'L',
+        source: 'leave',
+        leaveRequestId: 'leave-paid',
+      },
+      '2028-02-02': {
+        status: 'UL',
+        source: 'leave',
+        leaveRequestId: 'leave-unpaid',
+      },
+    },
+  });
+  assert.equal(result.days[0]?.leaveRequestId, 'leave-paid');
+  assert.equal(result.days[1]?.leaveRequestId, 'leave-unpaid');
+  assert.equal(result.summary.paidLeave, 1);
+  assert.equal(result.summary.unpaidLeave, 1);
+  assert.equal(result.summary.lop, 1);
+});
