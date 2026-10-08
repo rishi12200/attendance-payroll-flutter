@@ -390,8 +390,8 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [x] Employee calendar with the summary header
 
 ### Step 6: Leave
-- [ ] Apply, list, and approve or reject endpoints with the edge-case rules above
-- [ ] Approval writes `L` or `UL` on the requested dates
+- [x] Apply, list, and approve or reject endpoints with the edge-case rules above
+- [x] Approval writes `L` or `UL` on the requested dates
 - [ ] Flutter apply screen and admin approval screen
 
 ### Step 7: Payroll

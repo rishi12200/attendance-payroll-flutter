@@ -416,3 +416,96 @@ contains only the ID token:
 $env:WEB_API_KEY = "<firebase-web-api-key>"
 npm --silent run dev:login -- --email admin@example.com --password "<temporary-password>"
 ```
+
+## Leave API (Step 6 backend)
+
+Leave request dates are inclusive `YYYY-MM-DD` IST calendar dates. A request
+may cover at most 31 days. Employees must be active, and the requested range
+must fall within their `doj` and inclusive `dol`. A request is rejected if any
+month it touches is locked or if it overlaps another pending or approved
+request for that employee. Rejected and cancelled requests do not block a new
+request. Lists read at most 200 request documents and filter/sort those results
+in memory.
+
+- `POST /leaves` â€” employee only. Body: `{ "fromDate": "2026-10-12",
+  "toDate": "2026-10-13", "reason": "Family event" }`. Reason is trimmed,
+  required, and limited to 200 characters. Returns `201` with a pending request.
+- `GET /leaves/me?status=pending|approved|rejected|cancelled|all` â€” employee
+  only; status is optional. Returns the caller's requests newest first.
+- `POST /leaves/:id/cancel` â€” employee only; only the request owner may cancel
+  a pending request. Returns the updated request.
+- `GET /leaves?status=pending|approved|rejected|cancelled|all&empId=<uid>` â€”
+  admin only; status defaults to `pending`. Returns up to 200 matching requests
+  newest first with `name`, `empCode`, and `designation` from the employee
+  profile.
+- `GET /leaves/:id` â€” admin or the request owner. A request owned by someone
+  else returns 404 to avoid exposing whether its ID exists.
+- `POST /leaves/:id/decision` â€” admin only. Approve with
+  `{ "decision": "approved", "leaveType": "paid", "note": "Approved" }`,
+  or reject with `{ "decision": "rejected", "note": "Please reapply" }`.
+  `leaveType` is required for approval and is not accepted for rejection.
+
+Approval runs in one Firestore transaction. It checks the request, employee,
+company weekly offs, holidays, attendance months, and payroll locks before any
+writes. For each date the classification order is: outside the employee's
+joining window, existing `P` or `H` punch/presence, holiday, weekly off, then
+write the leave status. Weekly offs and holidays are never written. Existing
+`A`, `L`, and `UL` entries may be overwritten. Punch days are returned as
+`has_punch` in `skippedDates`; other skip reasons are `outside_employment`,
+`holiday`, and `weekly_off`.
+
+For each date written, the corresponding attendance day becomes `L` for paid
+leave or `UL` for unpaid leave, with `source: "leave"`, `leaveRequestId`, and
+admin edit fields. Existing attendance month documents are updated only at
+those day paths; missing month documents are created. The request stores
+`writtenDates`, `skippedDates`, `leaveType`, and decision metadata, and an audit
+log is written in the same transaction. A request whose dates are all skipped
+is still approved and includes `"noDaysWritten": true` in its response.
+
+Example `POST /leaves` response:
+
+```json
+{
+  "id": "leave-request-id",
+  "empId": "employee-uid",
+  "fromDate": "2026-10-12",
+  "toDate": "2026-10-13",
+  "reason": "Family event",
+  "status": "pending",
+  "createdAt": "2026-10-08T10:00:00.000Z",
+  "updatedAt": "2026-10-08T10:00:00.000Z"
+}
+```
+
+Example approval response with a weekly off skipped:
+
+```json
+{
+  "id": "leave-request-id",
+  "empId": "employee-uid",
+  "fromDate": "2026-10-11",
+  "toDate": "2026-10-12",
+  "reason": "Family event",
+  "status": "approved",
+  "leaveType": "paid",
+  "writtenDates": ["2026-10-12"],
+  "skippedDates": [{ "date": "2026-10-11", "reason": "weekly_off" }],
+  "decidedBy": "admin-uid",
+  "decidedAt": "2026-10-08T10:00:00.000Z",
+  "decisionNote": "Approved"
+}
+```
+
+Leave business errors use the standard error body. Important codes are
+`INVALID_DATE_RANGE` (400), `LEAVE_RANGE_TOO_LONG` (422),
+`OUTSIDE_EMPLOYMENT_WINDOW` (422), `MONTH_LOCKED` (409),
+`LEAVE_OVERLAP` (409, `details.requestId` identifies the conflicting request),
+`LEAVE_NOT_FOUND` (404), `NOT_PENDING` (409), and `ALREADY_DECIDED` (409).
+Authentication failures are 401; wrong-role or inactive-employee requests are
+403. Unknown JSON fields and missing approval leave types return 400
+`VALIDATION_ERROR`.
+
+The calendar and summary endpoints read the resulting `L` and `UL` attendance
+statuses. `leaveRequestId` is included in the calendar day when stored. A later
+check-in on a day marked `L` or `UL` changes that day to `P` with
+`source: "app"`, following the existing Step 4 check-in behavior.
