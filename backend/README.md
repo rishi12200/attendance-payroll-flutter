@@ -191,6 +191,221 @@ Outside-geofence errors include the nearest branch, distance, radius, and
 reported accuracy in `details`. Rejected location attempts are recorded in
 `checkins` on a best-effort basis.
 
+## Attendance views, holidays and settings (Step 5 backend)
+
+Attendance calendar days use the stored status when one exists. Otherwise,
+dates before `doj` are `NOT_JOINED`, dates after inclusive `dol` are `LEFT`,
+holidays beat weekly offs, and working days before today's IST date derive as
+`A` (absent). Today and future working days without a record are `PENDING`.
+Stored leave and punches are retained even on a future date, holiday, or weekly
+off. A record outside the employee's joining window is ignored.
+
+Summary counts partition every date in the month into `weeklyOffs`, `holidays`,
+`present`, `halfDays`, `absent`, `paidLeave`, `unpaidLeave`,
+`notJoinedOrLeftDays`, or `pending`. `lop` is absent + unpaid leave + half of
+half-days; `payableDays` is `daysInMonth - lop`. Days outside the joining
+window are neither absent nor LOP. Monthly salary is not prorated for joining
+or leaving mid-month; payroll uses the summary and the configured per-day
+basis.
+
+- `GET /attendance/me/calendar?month=YYYY-MM` — employee's own calendar;
+  admins receive 403.
+- `GET /attendance/employee/:id/calendar?month=YYYY-MM` — admin calendar for
+  any employee.
+- `GET /attendance/summary?month=YYYY-MM` — admin summaries for employees
+  whose joining window overlaps the month; an employee receives only their
+  own summary.
+- `GET /attendance/summary?month=YYYY-MM&empId=<uid>` — one admin summary, or
+  an employee's own summary when `empId` is omitted or matches their UID.
+- `GET /attendance?date=YYYY-MM-DD` — admin by-date rows for employees whose
+  joining window includes the date. Employees without an attendance document
+  are included. Future dates are allowed.
+- `PATCH /attendance/:empId/:date` — admin edit with `{ "status": "P|H|A|L|UL",
+  "inTime": "<ISO 8601, optional>", "outTime": "<ISO 8601, optional>",
+  "reason": "<required, max 200 characters>" }`. Times are allowed only for
+  `P` and `H`. `A`, `L`, and `UL` edits clear punch and branch/distance fields.
+  Every edit sets `source: "admin_edit"`, records `editedBy`/`editedAt`, and
+  writes an `attendance.edit` audit log transactionally.
+- `GET /checkins/flagged?from=YYYY-MM-DD&to=YYYY-MM-DD` — rejected check-in
+  attempts from a range of at most 31 inclusive days; omitted bounds default
+  to the last seven IST dates. The response excludes raw latitude/longitude
+  and is capped at 500 queried records.
+- `GET /holidays?year=YYYY` — sorted holiday list for admins and employees.
+- `POST /holidays` — admin create with `{ "date": "YYYY-MM-DD", "name":
+  "Holiday name" }`; an existing date returns 409 `HOLIDAY_EXISTS`.
+- `DELETE /holidays/:date` — admin delete; a missing date returns 404
+  `HOLIDAY_NOT_FOUND`.
+- `GET /settings` — admin effective settings, including defaults.
+- `PATCH /settings` — admin partial update. Accepted fields are `companyName`,
+  `weeklyOffDays` (unique weekday numbers 0–6), `perDayBasis` (`calendar` or
+  `working`), `maxAccuracyMeters` (integer 10–500), `rejectMockLocation`, and
+  `enforceCheckoutLocation`. Unknown fields are rejected. Updates record
+  `editedBy` and `updatedAt`.
+
+Default settings are `companyName: ""`, `weeklyOffDays: [0]`,
+`perDayBasis: "calendar"`, `maxAccuracyMeters: 100`,
+`rejectMockLocation: true`, and `enforceCheckoutLocation: false`. Changing
+`weeklyOffDays` changes the derived statuses of past months that are not
+locked; the calendar is built from the current settings and is not a stored
+snapshot.
+
+For this example the employee joined on October 6 and October 8 is a holiday.
+The following calendar response is abbreviated to show a derived day and a
+stored day; actual responses contain an entry for every date in the month.
+
+Example `GET /attendance/me/calendar?month=2026-10` response:
+
+```json
+{
+  "month": "2026-10",
+  "today": "2026-10-10",
+  "serverTime": "2026-10-10T10:00:00.000Z",
+  "summary": {
+    "daysInMonth": 31,
+    "weeklyOffs": 3,
+    "holidays": 1,
+    "present": 1,
+    "halfDays": 0,
+    "absent": 3,
+    "paidLeave": 0,
+    "unpaidLeave": 0,
+    "notJoinedOrLeftDays": 5,
+    "pending": 18,
+    "lop": 3,
+    "payableDays": 28
+  },
+  "days": [
+    {
+      "date": "2026-10-06",
+      "weekday": 2,
+      "status": "A",
+      "derived": true
+    },
+    {
+      "date": "2026-10-10",
+      "weekday": 6,
+      "status": "P",
+      "derived": false,
+      "inTime": "2026-10-10T03:30:00.000Z",
+      "inBranchId": "branch-abc123",
+      "inBranchName": "Chennai Office",
+      "source": "app"
+    }
+  ]
+}
+```
+
+The following by-date response is abbreviated to one row; actual responses
+contain all employees whose employment window includes the date.
+
+Example admin by-date response:
+
+```json
+{
+  "date": "2026-10-10",
+  "today": "2026-10-10",
+  "totals": {
+    "P": 1,
+    "H": 0,
+    "A": 0,
+    "L": 0,
+    "UL": 0,
+    "WEEKLY_OFF": 0,
+    "HOLIDAY": 0,
+    "PENDING": 1
+  },
+  "rows": [
+    {
+      "empId": "employee-uid",
+      "empCode": "EMP001",
+      "name": "Asha",
+      "designation": "Associate",
+      "date": "2026-10-10",
+      "weekday": 6,
+      "status": "P",
+      "derived": false,
+      "inTime": "2026-10-10T03:30:00.000Z",
+      "inBranchName": "Chennai Office",
+      "noCheckout": false,
+      "checkedInNow": true
+    }
+  ]
+}
+```
+
+Example effective settings response:
+
+```json
+{
+  "companyName": "Example Company",
+  "weeklyOffDays": [0],
+  "perDayBasis": "calendar",
+  "maxAccuracyMeters": 100,
+  "rejectMockLocation": true,
+  "enforceCheckoutLocation": false,
+  "editedBy": "admin-uid",
+  "updatedAt": "2026-10-10T10:00:00.000Z"
+}
+```
+
+Example holiday response (`GET /holidays?year=2026`):
+
+```json
+[
+  {
+    "date": "2026-10-08",
+    "name": "Company holiday"
+  }
+]
+```
+
+Example flagged-checkin response (coordinates are intentionally omitted):
+
+```json
+[
+  {
+    "id": "checkin-document-id",
+    "empId": "employee-uid",
+    "empCode": "EMP001",
+    "name": "Asha",
+    "type": "in",
+    "date": "2026-10-09",
+    "serverTime": "2026-10-09T03:30:00.000Z",
+    "rejectReason": "OUTSIDE_GEOFENCE",
+    "nearestBranchName": "Chennai Office",
+    "distanceMeters": 1200,
+    "accuracy": 15,
+    "isMocked": false,
+    "deviceId": "install-id"
+  }
+]
+```
+
+Example admin edit response:
+
+```json
+{
+  "date": "2026-10-09",
+  "weekday": 5,
+  "status": "P",
+  "derived": false,
+  "inTime": "2026-10-09T03:30:00.000Z",
+  "outTime": "2026-10-09T11:30:00.000Z",
+  "workedMinutes": 480,
+  "source": "admin_edit",
+  "editedBy": "admin-uid",
+  "editedAt": "2026-10-10T10:00:00.000Z"
+}
+```
+
+Business errors include `HOLIDAY_EXISTS`, `HOLIDAY_NOT_FOUND`, `MONTH_LOCKED`,
+`EMPLOYEE_NOT_FOUND`, `FUTURE_ATTENDANCE_DATE`,
+`OUTSIDE_EMPLOYMENT_WINDOW`, `OUT_TIME_WITHOUT_IN_TIME`,
+`INVALID_ATTENDANCE_TIMES`, and `INVALID_DATE_RANGE`. Validation and unknown
+fields return 400 `VALIDATION_ERROR`; admin-only endpoints return 403 for
+employees. Responses containing Firestore values use the shared serializer for
+ISO 8601 timestamps.
+
 ## Get a development ID token
 
 Set the Firebase project's Web API key in the current PowerShell process, then

@@ -383,10 +383,10 @@ Each step ends with something you can demo and test. Do one step at a time and c
 - [ ] **Done when:** inside the radius succeeds, outside is rejected, mock location is flagged, a double tap creates one check-in
 
 ### Step 5: Attendance views
-- [ ] Summary function with unit tests (statuses, holidays, weekly offs, `doj`, `dol`, derived absent)
-- [ ] Holidays and settings endpoints
-- [ ] Admin by-date list with in and out times, hours and derived statuses
-- [ ] Admin edit (status and times)
+- [x] Summary function with unit tests (statuses, holidays, weekly offs, `doj`, `dol`, derived absent)
+- [x] Holidays and settings endpoints
+- [x] Admin by-date list with in and out times, hours and derived statuses
+- [x] Admin edit (status and times)
 - [ ] Employee calendar with the summary header
 
 ### Step 6: Leave
