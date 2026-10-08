@@ -53,14 +53,13 @@ class AttendanceMonth {
       (other.year - year) * 12 + other.month - month;
 
   bool canNavigateTo(AttendanceMonth target, {required AttendanceMonth today}) {
-    final monthsBack = target.monthsUntil(this);
-    return monthsBack >= 0 &&
-        monthsBack <= 12 &&
-        target.monthsUntil(today) >= 0;
+    final monthsBehindToday = target.monthsUntil(today);
+    return monthsBehindToday >= 0 && monthsBehindToday <= 12;
   }
 }
 
-String previousMonth(String month) => AttendanceMonth.parse(month).previous.value;
+String previousMonth(String month) =>
+    AttendanceMonth.parse(month).previous.value;
 
 String nextMonth(String month) => AttendanceMonth.parse(month).next.value;
 

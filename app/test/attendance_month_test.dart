@@ -33,6 +33,13 @@ void main() {
       isTrue,
     );
     expect(
+      AttendanceMonth.parse('2025-10').canNavigateTo(
+        AttendanceMonth.parse('2025-09'),
+        today: current,
+      ),
+      isFalse,
+    );
+    expect(
       selected.canNavigateTo(AttendanceMonth.parse('2025-09'), today: current),
       isFalse,
     );
