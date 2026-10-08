@@ -130,7 +130,6 @@ export function buildMonthCalendar(input: {
       status = record.status as CalendarStatus;
     } else if (Object.hasOwn(input.holidays, date)) {
       status = 'HOLIDAY';
-      holidayName = input.holidays[date];
     } else if (weeklyOffDays.has(weekday)) {
       status = 'WEEKLY_OFF';
     } else if (date < input.today) {
@@ -140,6 +139,9 @@ export function buildMonthCalendar(input: {
       status = 'PENDING';
     }
 
+    if (!beforeJoining && !afterLeaving && Object.hasOwn(input.holidays, date)) {
+      holidayName = input.holidays[date];
+    }
     const entry: DayEntry = { date, weekday, status, derived };
     if (holidayName !== undefined) entry.holidayName = holidayName;
     if (record !== undefined) {

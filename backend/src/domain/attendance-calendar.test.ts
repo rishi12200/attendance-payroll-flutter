@@ -46,19 +46,19 @@ test('holiday beats weekly off and records beat both', () => {
       '2028-01-02': 'Sunday holiday',
       '2028-01-03': 'Working day holiday',
       '2028-01-07': 'Recorded holiday',
-      '2028-01-09': 'Recorded weekly off',
     },
     weeklyOffDays: [0, 6],
     days: {
       '2028-01-07': { status: 'P' },
-      '2028-01-09': { status: 'H' },
+      '2028-01-08': { status: 'H' },
     },
   });
   assert.equal(result.days[1]?.status, 'HOLIDAY');
   assert.equal(result.days[1]?.holidayName, 'Sunday holiday');
   assert.equal(result.days[2]?.status, 'HOLIDAY');
   assert.equal(result.days[6]?.status, 'P');
-  assert.equal(result.days[8]?.status, 'H');
+  assert.equal(result.days[6]?.holidayName, 'Recorded holiday');
+  assert.equal(result.days[7]?.status, 'H');
 });
 
 test('today is pending, yesterday is derived absent, and future leave remains recorded', () => {
