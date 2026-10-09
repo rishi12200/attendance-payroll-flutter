@@ -230,10 +230,15 @@ basis.
   attempts from a range of at most 31 inclusive days; omitted bounds default
   to the last seven IST dates. The response excludes raw latitude/longitude
   and is capped at 500 queried records.
-- `GET /holidays?year=YYYY` — sorted holiday list for admins and employees.
-- `POST /holidays` — admin create with `{ "date": "YYYY-MM-DD", "name":
-  "Holiday name" }`; an existing date returns 409 `HOLIDAY_EXISTS`.
-- `DELETE /holidays/:date` — admin delete; a missing date returns 404
+- `GET /holidays?year=YYYY&branchId=<id>` — sorted holiday list for admins,
+  optionally filtered to holidays applying to the selected branch. Employees
+  get the same response shape filtered to their primary branch.
+- `GET /holidays/me?year=YYYY` — employee-only list for the caller's primary
+  branch.
+- `POST /holidays` — admin create with `date`, `name`, `scope` (`all` or
+  `branches`) and `branchIds` or the `state` shortcut. A same-name holiday
+  with an overlapping scope returns 409 `HOLIDAY_EXISTS`.
+- `DELETE /holidays/:id` — admin delete by document ID; a missing document returns 404
   `HOLIDAY_NOT_FOUND`.
 - `GET /settings` — admin effective settings, including defaults.
 - `PATCH /settings` — admin partial update. Accepted fields are `companyName`,
@@ -353,8 +358,13 @@ Example holiday response (`GET /holidays?year=2026`):
 ```json
 [
   {
+    "id": "holiday-document-id",
     "date": "2026-10-08",
-    "name": "Company holiday"
+    "name": "Company holiday",
+    "scope": "all",
+    "branchIds": [],
+    "createdBy": "admin-uid",
+    "createdAt": "2026-10-01T10:00:00.000Z"
   }
 ]
 ```
