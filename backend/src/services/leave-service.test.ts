@@ -12,6 +12,7 @@ import type {
   LeaveStore,
   LeaveTransaction,
 } from './leave-store';
+import type { HolidayInput } from '../domain/holidays';
 
 const employee: EmployeeRecord = {
   uid: 'emp-1',
@@ -98,7 +99,7 @@ class FakeLeaveStore implements LeaveStore {
       }),
       getHolidays: async (months) => read(() => {
         this.events.push('read-holidays');
-        return [...this.holidays].filter((date) => months.includes(date.slice(0, 7)));
+        return [...this.holidays].filter((date) => months.includes(date.slice(0, 7))).map((date) => ({ id: date, date, name: 'Holiday', scope: 'all' as const, branchIds: [] } satisfies HolidayInput));
       }),
       getAttendance: async (id) => read(() => {
         this.events.push('read-attendance');

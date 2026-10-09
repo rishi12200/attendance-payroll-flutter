@@ -13,6 +13,7 @@ import type {
   LeaveStore,
   LeaveType,
 } from './leave-store';
+import { holidayAppliesToBranch } from '../domain/holidays';
 
 const MAX_LIST_READS = 200;
 const activeStatuses = new Set<LeaveStatus>(['pending', 'approved']);
@@ -213,7 +214,7 @@ export class LeaveService {
         dates: range,
         doj: typeof employee.doj === 'string' ? employee.doj : null,
         dol: typeof employee.dol === 'string' ? employee.dol : null,
-        holidays: new Set(holidayDates),
+        holidays: new Set(holidayDates.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null)).map((holiday) => String(holiday.date))),
         weeklyOffDays: settings.weeklyOffDays,
         days,
       });

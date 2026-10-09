@@ -5,6 +5,7 @@ import {
 } from 'firebase-admin/firestore';
 import type { AttendanceDay, AttendanceDocument } from './attendance-store';
 import type { EmployeeRecord } from './employee-service';
+import { normalizeHoliday, type HolidayInput } from '../domain/holidays';
 import type {
   LeaveAuditRecord,
   LeaveMonthLock,
@@ -80,17 +81,13 @@ export class FirestoreLeaveStore implements LeaveStore {
           return snapshot.exists ? snapshot.data() : undefined;
         },
         getHolidays: async (months) => {
-          const snapshots = await Promise.all(months.map((month) => {
-            const start = `${month}-01`;
-            const [year, monthNumber] = month.split('-').map(Number);
-            const endDate = new Date(Date.UTC(year!, monthNumber!, 0));
-            const end = `${month}-${String(endDate.getUTCDate()).padStart(2, '0')}`;
-            const query = holidays
-              .where(FieldPath.documentId(), '>=', start)
-              .where(FieldPath.documentId(), '<=', end);
-            return firestoreTransaction.get(query);
-          }));
-          return snapshots.flatMap((snapshot) => snapshot.docs.map((document) => document.id));
+          // Generated and legacy IDs coexist, so filter a bounded collection read in memory.
+          const snapshot = await firestoreTransaction.get(holidays.limit(1000));
+          return snapshot.docs.flatMap((document) => {
+            const value = normalizeHoliday(document.id, document.data() as HolidayInput);
+            if (!value) { console.warn(`Ignoring invalid holiday document ${document.id}`); return []; }
+            return months.some((month) => String(value.date).startsWith(`${month}-`)) ? [value] : [];
+          });
         },
         getAttendance: async (id) => {
           const snapshot = await firestoreTransaction.get(attendance.doc(id));

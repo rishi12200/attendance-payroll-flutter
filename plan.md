@@ -456,10 +456,10 @@ Each step ends with something you can demo and test. Do one step at a time, back
 
 ### Step 6.5: Branch-wise holidays and employee holiday list
 Backend:
-- [ ] Holiday documents gain `scope` and `branchIds`. Old date-keyed documents are read as `scope: all`.
-- [ ] One shared "holidays for an employee" lookup (primary branch) used by the calendar, summary, admin by-date list and leave classification
-- [ ] `GET /holidays?branchId=`, `GET /holidays/me`, `POST /holidays` with scope and state shortcut, `DELETE /holidays/:id`
-- [ ] Domain tests: same date with different scopes, employee with no primary branch, old documents, summary sum check still equals days in the month
+- [x] Holiday documents gain `scope` and `branchIds`. Old date-keyed documents are read as `scope: all`.
+- [x] One shared "holidays for an employee" lookup (primary branch) used by the calendar, summary, admin by-date list and leave classification
+- [x] `GET /holidays?branchId=`, `GET /holidays/me`, `POST /holidays` with scope and state shortcut, `DELETE /holidays/:id`
+- [x] Domain tests: same date with different scopes, employee with no primary branch, old documents, summary sum check still equals days in the month
 
 Flutter:
 - [ ] Admin holidays screen: branch filter, add form with scope choice and state shortcut

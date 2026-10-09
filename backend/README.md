@@ -509,3 +509,27 @@ The calendar and summary endpoints read the resulting `L` and `UL` attendance
 statuses. `leaveRequestId` is included in the calendar day when stored. A later
 check-in on a day marked `L` or `UL` changes that day to `P` with
 `source: "app"`, following the existing Step 4 check-in behavior.
+
+## Branch-wise holidays (Step 6.5)
+
+- `GET /holidays?year=2026` is available to admins and employees. Admins can
+  optionally pass `branchId`; employees always receive holidays for their own
+  primary branch. `GET /holidays/me?year=2026` is the employee-only form.
+- `POST /holidays` (admin) accepts `date`, `name`, `scope` (`all` or
+  `branches`), and either `branchIds` or a `state` shortcut. Branch IDs must
+  refer to active branches. A state shortcut selects active branches with a
+  matching state (case-insensitive).
+- `DELETE /holidays/:id` deletes by Firestore document ID. Create and delete
+  operations reject locked payroll months and write an audit record.
+- Multiple holidays may share a date when their scopes do not overlap. A
+  holiday list response contains `id`, `date`, `name`, `scope`, `branchIds`,
+  `createdBy`, and ISO serialized `createdAt` when present.
+- Legacy date-keyed documents that contain only `name` are normalized to
+  `scope: "all"`. Invalid legacy documents are omitted and logged by ID.
+  Holiday reads load at most 1,000 documents before date filtering because the
+  collection contains both legacy date IDs and generated IDs; an ID-range query
+  would omit generated documents.
+- Calendar, summary, admin by-date, and leave approval use the employee's
+  `primaryBranchId`. Employees with no primary branch receive all-scope
+  holidays only. When several holidays apply on one day, calendar `holidayName`
+  values are sorted and joined.

@@ -63,6 +63,7 @@ const branch: AttendanceBranch = {
 
 class FakeViewsStore implements AttendanceViewsStore, SettingsStore {
   settings: Record<string, unknown> | undefined;
+  employeeBranch: string | null = 'branch-1';
   readonly attendance = new Map<string, AttendanceDocument>();
   readonly payrollMonths = new Map<string, PayrollMonthDocument>();
   readonly holidays = new Map<string, HolidayRecord>();
@@ -105,19 +106,22 @@ class FakeViewsStore implements AttendanceViewsStore, SettingsStore {
       .sort((left, right) => left.date.localeCompare(right.date));
   }
 
-  async getHoliday(date: string) {
-    return this.holidays.get(date);
+  async listAllHolidays() { return [...this.holidays.values()]; }
+  async listHolidayBranches() { return [{ id: 'branch-1', state: 'Tamil Nadu', status: 'active' }, { id: 'branch-2', state: 'Kerala', status: 'active' }]; }
+  async getEmployeeBranch() { return this.employeeBranch; }
+
+  async getHoliday(id: string) {
+    return this.holidays.get(id);
   }
 
-  async createHoliday(holiday: HolidayRecord) {
-    if (this.holidays.has(holiday.date)) {
-      throw new AppError(409, 'HOLIDAY_EXISTS', 'A holiday already exists.');
-    }
-    this.holidays.set(holiday.date, holiday);
+  async writeHoliday(input: { values: Record<string, unknown>; audit: Record<string, unknown> }) {
+    const id = `holiday-${this.holidays.size + 1}`;
+    this.holidays.set(id, { ...input.values, id } as HolidayRecord);
+    return id;
   }
 
-  async deleteHoliday(date: string) {
-    return this.holidays.delete(date);
+  async deleteHoliday(id: string) {
+    return this.holidays.delete(id);
   }
 
   async listCheckinsByDate(fromDate: string, toDate: string) {
@@ -238,31 +242,44 @@ test('settings returns all defaults and PATCH records editor with effective valu
 
 test('holidays create, list sorted, reject duplicates and locked months, and delete', async () => {
   const { store, holidays } = service();
-  await holidays.createHoliday(admin, { date: '2026-10-20', name: 'Second' });
-  await holidays.createHoliday(admin, { date: '2026-10-02', name: 'First' });
+  await holidays.createHoliday(admin, { date: '2026-10-20', name: 'Second', scope: 'all' });
+  await holidays.createHoliday(admin, { date: '2026-10-02', name: 'First', scope: 'all' });
   assert.deepEqual(
     (await holidays.listHolidays(employeeCaller, '2026')).map(({ date }) => date),
     ['2026-10-02', '2026-10-20'],
   );
   await expectError(
-    holidays.createHoliday(admin, { date: '2026-10-20', name: 'Duplicate' }),
+    holidays.createHoliday(admin, { date: '2026-10-20', name: 'Second', scope: 'all' }),
     409,
     'HOLIDAY_EXISTS',
   );
   store.payrollMonths.set('2026-10', { locked: true });
   await expectError(
-    holidays.deleteHoliday(admin, '2026-10-20'),
+    holidays.deleteHoliday(admin, 'holiday-1'),
     409,
     'MONTH_LOCKED',
   );
   store.payrollMonths.delete('2026-10');
-  await holidays.deleteHoliday(admin, '2026-10-20');
-  await expectError(holidays.deleteHoliday(admin, '2026-10-20'), 404, 'HOLIDAY_NOT_FOUND');
+  await holidays.deleteHoliday(admin, 'holiday-1');
+  await expectError(holidays.deleteHoliday(admin, 'holiday-1'), 404, 'HOLIDAY_NOT_FOUND');
   await expectError(
-    holidays.createHoliday(employeeCaller, { date: '2026-10-21', name: 'No' }),
+    holidays.createHoliday(employeeCaller, { date: '2026-10-21', name: 'No', scope: 'all' }),
     403,
     'FORBIDDEN',
   );
+});
+
+test('branch-scoped holidays do not conflict with disjoint scopes and are filtered per employee', async () => {
+  const { store, holidays } = service();
+  const branchA = await holidays.createHoliday(admin, { date: '2026-10-21', name: 'Regional', scope: 'branches', branchIds: ['branch-1'] });
+  const branchB = await holidays.createHoliday(admin, { date: '2026-10-21', name: 'Regional', scope: 'branches', branchIds: ['branch-2'] });
+  assert.notEqual(branchA.id, branchB.id);
+  assert.deepEqual((await holidays.listHolidays(admin, '2026', 'branch-2')).map(({ id }) => id), [branchB.id]);
+  assert.deepEqual((await holidays.listMine(employeeCaller, '2026')).map(({ id }) => id), [branchA.id]);
+  store.employeeBranch = null;
+  assert.deepEqual(await holidays.listMine(employeeCaller, '2026'), []);
+  await holidays.createHoliday(admin, { date: '2026-10-21', name: 'National', scope: 'all' });
+  assert.equal((await holidays.listMine(employeeCaller, '2026')).length, 1);
 });
 
 test('by-date includes eligible employees without a doc, excludes leavers, and marks open punches', async () => {
