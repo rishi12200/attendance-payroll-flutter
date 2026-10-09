@@ -33,6 +33,7 @@ const employeesSeed: EmployeeRecord[] = [
     role: 'employee',
     status: 'active',
     doj: '2026-10-01',
+    primaryBranchId: 'branch-1',
   },
   {
     uid: 'emp-2',
@@ -41,6 +42,7 @@ const employeesSeed: EmployeeRecord[] = [
     role: 'employee',
     status: 'inactive',
     doj: '2026-10-01',
+    primaryBranchId: 'branch-2',
   },
   {
     uid: 'emp-old',
@@ -280,6 +282,55 @@ test('branch-scoped holidays do not conflict with disjoint scopes and are filter
   assert.deepEqual(await holidays.listMine(employeeCaller, '2026'), []);
   await holidays.createHoliday(admin, { date: '2026-10-21', name: 'National', scope: 'all' });
   assert.equal((await holidays.listMine(employeeCaller, '2026')).length, 1);
+});
+
+function seedBranchHoliday(store: FakeViewsStore, id: string, branchId: string) {
+  store.holidays.set(id, {
+    id,
+    date: '2026-10-09',
+    name: `Holiday ${branchId}`,
+    scope: 'branches',
+    branchIds: [branchId],
+  });
+}
+
+test('employee calendars show only holidays for the employee primary branch', async () => {
+  const { store, views } = service();
+  seedBranchHoliday(store, 'holiday-a', 'branch-1');
+  seedBranchHoliday(store, 'holiday-b', 'branch-2');
+
+  const own = await views.getMyCalendar(employeeCaller, '2026-10');
+  const ownDays = own.days as Array<Record<string, unknown>>;
+  assert.equal(ownDays.find((day) => day.date === '2026-10-09')?.holidayName, 'Holiday branch-1');
+  assert.equal((own.summary as Record<string, unknown>).holidays, 1);
+
+  const other = await views.getEmployeeCalendar(admin, 'emp-2', '2026-10');
+  const otherDays = other.days as Array<Record<string, unknown>>;
+  assert.equal(otherDays.find((day) => day.date === '2026-10-09')?.holidayName, 'Holiday branch-2');
+  assert.equal((other.summary as Record<string, unknown>).holidays, 1);
+});
+
+test('monthly summaries apply branch holidays and still count every day once', async () => {
+  const { store, views } = service();
+  seedBranchHoliday(store, 'holiday-a', 'branch-1');
+  const own = (await views.getSummary(employeeCaller, '2026-10')) as Record<string, unknown>;
+  const other = (await views.getSummary(admin, '2026-10', 'emp-2')) as Record<string, unknown>;
+  const ownSummary = own.summary as Record<string, number>;
+  const otherSummary = other.summary as Record<string, number>;
+  assert.equal(ownSummary.holidays, 1);
+  assert.equal(otherSummary.holidays, 0);
+  for (const summary of [ownSummary, otherSummary]) {
+    assert.equal(summary.present + summary.halfDays + summary.absent + summary.paidLeave + summary.unpaidLeave + summary.weeklyOffs + summary.holidays + summary.notJoinedOrLeftDays + summary.pending, summary.daysInMonth);
+  }
+});
+
+test('admin by-date status uses each employee primary branch holiday', async () => {
+  const { store, views } = service();
+  seedBranchHoliday(store, 'holiday-a', 'branch-1');
+  const result = await views.getByDate(admin, '2026-10-09');
+  const rows = result.rows as Array<Record<string, unknown>>;
+  assert.equal(rows.find((row) => row.empId === 'emp-1')?.status, 'HOLIDAY');
+  assert.equal(rows.find((row) => row.empId === 'emp-2')?.status, 'A');
 });
 
 test('by-date includes eligible employees without a doc, excludes leavers, and marks open punches', async () => {
