@@ -43,9 +43,13 @@ export interface AttendanceViewsStore {
   ): Promise<Map<string, AttendanceDocument>>;
   getPayrollMonth(month: string): Promise<PayrollMonthDocument | undefined>;
   listHolidays(fromDate: string, toDate: string): Promise<HolidayRecord[]>;
-  getHoliday(date: string): Promise<HolidayRecord | undefined>;
-  createHoliday(holiday: HolidayRecord): Promise<void>;
-  deleteHoliday(date: string): Promise<boolean>;
+  listAllHolidays(): Promise<import('../domain/holidays').HolidayInput[]>;
+  listHolidayBranches(): Promise<Array<{ id: string; state: string; status: string }>>;
+  getEmployeeBranch(uid: string): Promise<string | null>;
+  getHoliday(id: string): Promise<import('../domain/holidays').HolidayInput | undefined>;
+  writeHoliday(input: { id?: string; values: Record<string, unknown>; audit: Record<string, unknown> }): Promise<string>;
+  deleteHoliday(id: string, audit: Record<string, unknown>): Promise<boolean>;
+  serverTimestamp(): unknown;
   listCheckinsByDate(fromDate: string, toDate: string): Promise<FlaggedCheckinRecord[]>;
   runAttendanceEdit<T>(
     work: (transaction: AttendanceEditTransaction) => Promise<T>,

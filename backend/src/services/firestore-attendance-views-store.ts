@@ -3,13 +3,13 @@ import {
   FieldValue,
   type Firestore,
 } from 'firebase-admin/firestore';
-import { AppError } from '../errors/app-error';
 import type {
   AttendanceDay,
   AttendanceDocument,
   PayrollMonthDocument,
 } from './attendance-store';
 import type { HolidayRecord } from './holiday-service';
+import { normalizeHoliday, type HolidayInput } from '../domain/holidays';
 import type {
   AttendanceEditAudit,
   AttendanceEditTransaction,
@@ -62,51 +62,57 @@ export class FirestoreAttendanceViewsStore implements AttendanceViewsStore {
   }
 
   async listHolidays(fromDate: string, toDate: string): Promise<HolidayRecord[]> {
-    const snapshot = await this.firestore
-      .collection('holidays')
-      .where(FieldPath.documentId(), '>=', fromDate)
-      .where(FieldPath.documentId(), '<=', toDate)
-      .orderBy(FieldPath.documentId())
-      .get();
-    return snapshot.docs.map((document) => ({
-      ...(document.data() as HolidayRecord),
-      date: document.id,
-    }));
+    return (await this.listAllHolidays()).filter((holiday) => String(holiday.date) >= fromDate && String(holiday.date) <= toDate) as HolidayRecord[];
   }
 
-  async getHoliday(date: string): Promise<HolidayRecord | undefined> {
-    const snapshot = await this.firestore.collection('holidays').doc(date).get();
-    return snapshot.exists
-      ? { ...(snapshot.data() as HolidayRecord), date: snapshot.id }
-      : undefined;
-  }
-
-  async createHoliday(holiday: HolidayRecord): Promise<void> {
-    try {
-      await this.firestore.collection('holidays').doc(holiday.date).create({
-        name: holiday.name,
-        date: holiday.date,
-      });
-    } catch (error) {
-      if (firestoreCode(error) === 'already-exists' || firestoreCode(error) === '6') {
-        throw new AppError(
-          409,
-          'HOLIDAY_EXISTS',
-          'A holiday already exists for this date.',
-        );
-      }
-      throw error;
-    }
-  }
-
-  async deleteHoliday(date: string): Promise<boolean> {
-    const reference = this.firestore.collection('holidays').doc(date);
-    return this.firestore.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(reference);
-      if (!snapshot.exists) return false;
-      transaction.delete(reference);
-      return true;
+  async listAllHolidays(): Promise<HolidayInput[]> {
+    // Generated IDs and legacy date IDs cannot both be selected by document-ID range.
+    const snapshot = await this.firestore.collection('holidays').limit(1000).get();
+    return snapshot.docs.flatMap((document) => {
+      const raw = document.data() as HolidayInput;
+      const value = normalizeHoliday(document.id, raw);
+      if (!value) { console.warn(`Ignoring invalid holiday document ${document.id}`); return []; }
+      return [value];
     });
+  }
+
+  async listHolidayBranches(): Promise<Array<{ id: string; state: string; status: string }>> {
+    const snapshot = await this.firestore.collection('branches').get();
+    return snapshot.docs.map((document) => ({ id: document.id, state: String(document.get('state') ?? ''), status: String(document.get('status') ?? '') }));
+  }
+
+  async getEmployeeBranch(uid: string): Promise<string | null> {
+    const snapshot = await this.firestore.collection('employees').doc(uid).get();
+    const branchId = snapshot.get('primaryBranchId');
+    return typeof branchId === 'string' ? branchId : null;
+  }
+
+  async writeHoliday(input: { id?: string; values: Record<string, unknown>; audit: Record<string, unknown> }): Promise<string> {
+    const reference = input.id ? this.firestore.collection('holidays').doc(input.id) : this.firestore.collection('holidays').doc();
+    const batch = this.firestore.batch();
+    batch.create(reference, input.values);
+    batch.create(this.firestore.collection('audit_logs').doc(), input.audit);
+    await batch.commit();
+    return reference.id;
+  }
+
+  async getHoliday(id: string): Promise<HolidayRecord | undefined> {
+    const snapshot = await this.firestore.collection('holidays').doc(id).get();
+    if (!snapshot.exists) return undefined;
+    const raw = snapshot.data() as HolidayInput;
+    const normalized = normalizeHoliday(snapshot.id, raw);
+    return normalized ? normalized as HolidayRecord : undefined;
+  }
+
+  async deleteHoliday(id: string, audit: Record<string, unknown>): Promise<boolean> {
+    const reference = this.firestore.collection('holidays').doc(id);
+    const snapshot = await reference.get();
+    if (!snapshot.exists) return false;
+    const batch = this.firestore.batch();
+    batch.delete(reference);
+    batch.create(this.firestore.collection('audit_logs').doc(), audit);
+    await batch.commit();
+    return true;
   }
 
   async listCheckinsByDate(
@@ -177,12 +183,4 @@ export class FirestoreAttendanceViewsStore implements AttendanceViewsStore {
       days: (data.days ?? {}) as Record<string, AttendanceDay>,
     };
   }
-}
-
-function firestoreCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
-    return undefined;
-  }
-  const code = error.code;
-  return typeof code === 'string' || typeof code === 'number' ? String(code) : undefined;
 }

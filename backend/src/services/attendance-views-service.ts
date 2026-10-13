@@ -14,6 +14,7 @@ import {
 import type { AttendanceBranch } from './attendance-store';
 import type { EmployeeRecord } from './employee-service';
 import type { HolidayRecord } from './holiday-service';
+import { holidayAppliesToBranch, holidayNameMap } from '../domain/holidays';
 import type {
   AttendanceEditAudit,
   AttendanceViewsStore,
@@ -145,7 +146,6 @@ export class AttendanceViewsService {
     const attendance = await this.dependencies.store.getAttendanceDocuments(
       included.map((employee) => attendanceId(month, requireUid(employee))),
     );
-    const holidayMap = holidayMapOf(holidays);
     const settings = attendanceSettingsFromDocument(settingsDocument);
     const branchNames = branchNameMap(branches);
     const rows: Record<string, unknown>[] = [];
@@ -158,7 +158,7 @@ export class AttendanceViewsService {
         doj: stringOrNull(employee.doj),
         dol: stringOrNull(employee.dol),
         days: dayMap,
-        holidays: holidayMap,
+        holidays: holidayMapOf(holidays.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null))),
         weeklyOffDays: settings.weeklyOffDays,
       });
       const entry = addBranchNames(
@@ -258,7 +258,7 @@ export class AttendanceViewsService {
       doj: stringOrNull(employee.doj),
       dol: stringOrNull(employee.dol),
       days: document?.days ?? {},
-      holidays: holidayMapOf(holidays),
+      holidays: holidayMapOf(holidays.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null))),
       weeklyOffDays: attendanceSettingsFromDocument(settingsDocument).weeklyOffDays,
     });
     return addBranchNames(
@@ -361,7 +361,6 @@ export class AttendanceViewsService {
       ),
     ]);
     const settings = attendanceSettingsFromDocument(settingsDocument);
-    const holidayMap = holidayMapOf(holidays);
     return employees.map((employee) => {
       const id = requireUid(employee);
       const calendar = buildMonthCalendar({
@@ -370,7 +369,7 @@ export class AttendanceViewsService {
         doj: stringOrNull(employee.doj),
         dol: stringOrNull(employee.dol),
         days: attendanceDocuments.get(attendanceId(month, id))?.days ?? {},
-        holidays: holidayMap,
+        holidays: holidayMapOf(holidays.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null))),
         weeklyOffDays: settings.weeklyOffDays,
       });
       return { employee, ...calendar };
@@ -511,7 +510,7 @@ function stringOrNull(value: unknown): string | null {
 }
 
 function holidayMapOf(holidays: HolidayRecord[]): Record<string, string> {
-  return Object.fromEntries(holidays.map(({ date, name }) => [date, name]));
+  return holidayNameMap(holidays);
 }
 
 function branchNameMap(branches: AttendanceBranch[]): Map<string, string> {

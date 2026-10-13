@@ -12,6 +12,7 @@ import type {
   LeaveStore,
   LeaveTransaction,
 } from './leave-store';
+import type { HolidayInput } from '../domain/holidays';
 
 const employee: EmployeeRecord = {
   uid: 'emp-1',
@@ -37,6 +38,7 @@ class FakeLeaveStore implements LeaveStore {
   readonly attendance = new Map<string, AttendanceDocument>();
   readonly payrollMonths = new Map<string, { locked?: boolean }>();
   readonly holidays = new Set<string>();
+  readonly branchHolidays: HolidayInput[] = [];
   readonly audits: LeaveAuditRecord[] = [];
   readonly events: string[] = [];
   settings: Record<string, unknown> = { weeklyOffDays: [] };
@@ -98,7 +100,10 @@ class FakeLeaveStore implements LeaveStore {
       }),
       getHolidays: async (months) => read(() => {
         this.events.push('read-holidays');
-        return [...this.holidays].filter((date) => months.includes(date.slice(0, 7)));
+        return [
+          ...[...this.holidays].filter((date) => months.includes(date.slice(0, 7))).map((date) => ({ id: date, date, name: 'Holiday', scope: 'all' as const, branchIds: [] } satisfies HolidayInput)),
+          ...this.branchHolidays.filter((holiday) => typeof holiday.date === 'string' && months.includes(holiday.date.slice(0, 7))),
+        ];
       }),
       getAttendance: async (id) => read(() => {
         this.events.push('read-attendance');
@@ -345,6 +350,28 @@ test('skips weekly offs, holidays and punches while overwriting admin absence', 
     { date: '2026-10-06', reason: 'holiday' },
   ]);
   assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-07']?.status, 'L');
+});
+
+test('leave approval classifies scoped holidays by the employee primary branch', async () => {
+  const { store, leaves } = service();
+  store.employees.set('emp-1', { ...employee, primaryBranchId: 'branch-1' });
+  store.employees.set('emp-2', { ...employee, uid: 'emp-2', primaryBranchId: 'branch-2' });
+  store.branchHolidays.push({
+    id: 'holiday-branch-2',
+    date: '2026-10-06',
+    name: 'Branch 2 day off',
+    scope: 'branches',
+    branchIds: ['branch-2'],
+  });
+
+  const branchOneRequest = await pendingRequest(leaves, '2026-10-06', '2026-10-06');
+  const branchOneResult = await leaves.decide({ caller: admin, id: branchOneRequest.id, decision: 'approved', leaveType: 'paid' });
+  assert.deepEqual(branchOneResult.writtenDates, ['2026-10-06']);
+
+  store.seedRequest({ id: 'branch-two-leave', empId: 'emp-2', fromDate: '2026-10-06', toDate: '2026-10-06' });
+  const branchTwoResult = await leaves.decide({ caller: admin, id: 'branch-two-leave', decision: 'approved', leaveType: 'paid' });
+  assert.deepEqual(branchTwoResult.writtenDates, []);
+  assert.deepEqual(branchTwoResult.skippedDates, [{ date: '2026-10-06', reason: 'holiday' }]);
 });
 
 test('writes across two months and creates missing attendance month documents', async () => {

@@ -230,10 +230,15 @@ basis.
   attempts from a range of at most 31 inclusive days; omitted bounds default
   to the last seven IST dates. The response excludes raw latitude/longitude
   and is capped at 500 queried records.
-- `GET /holidays?year=YYYY` — sorted holiday list for admins and employees.
-- `POST /holidays` — admin create with `{ "date": "YYYY-MM-DD", "name":
-  "Holiday name" }`; an existing date returns 409 `HOLIDAY_EXISTS`.
-- `DELETE /holidays/:date` — admin delete; a missing date returns 404
+- `GET /holidays?year=YYYY&branchId=<id>` — sorted holiday list for admins,
+  optionally filtered to holidays applying to the selected branch. Employees
+  get the same response shape filtered to their primary branch.
+- `GET /holidays/me?year=YYYY` — employee-only list for the caller's primary
+  branch.
+- `POST /holidays` — admin create with `date`, `name`, `scope` (`all` or
+  `branches`) and `branchIds` or the `state` shortcut. A same-name holiday
+  with an overlapping scope returns 409 `HOLIDAY_EXISTS`.
+- `DELETE /holidays/:id` — admin delete by document ID; a missing document returns 404
   `HOLIDAY_NOT_FOUND`.
 - `GET /settings` — admin effective settings, including defaults.
 - `PATCH /settings` — admin partial update. Accepted fields are `companyName`,
@@ -353,8 +358,13 @@ Example holiday response (`GET /holidays?year=2026`):
 ```json
 [
   {
+    "id": "holiday-document-id",
     "date": "2026-10-08",
-    "name": "Company holiday"
+    "name": "Company holiday",
+    "scope": "all",
+    "branchIds": [],
+    "createdBy": "admin-uid",
+    "createdAt": "2026-10-01T10:00:00.000Z"
   }
 ]
 ```
@@ -509,3 +519,27 @@ The calendar and summary endpoints read the resulting `L` and `UL` attendance
 statuses. `leaveRequestId` is included in the calendar day when stored. A later
 check-in on a day marked `L` or `UL` changes that day to `P` with
 `source: "app"`, following the existing Step 4 check-in behavior.
+
+## Branch-wise holidays (Step 6.5)
+
+- `GET /holidays?year=2026` is available to admins and employees. Admins can
+  optionally pass `branchId`; employees always receive holidays for their own
+  primary branch. `GET /holidays/me?year=2026` is the employee-only form.
+- `POST /holidays` (admin) accepts `date`, `name`, `scope` (`all` or
+  `branches`), and either `branchIds` or a `state` shortcut. Branch IDs must
+  refer to active branches. A state shortcut selects active branches with a
+  matching state (case-insensitive).
+- `DELETE /holidays/:id` deletes by Firestore document ID. Create and delete
+  operations reject locked payroll months and write an audit record.
+- Multiple holidays may share a date when their scopes do not overlap. A
+  holiday list response contains `id`, `date`, `name`, `scope`, `branchIds`,
+  `createdBy`, and ISO serialized `createdAt` when present.
+- Legacy date-keyed documents that contain only `name` are normalized to
+  `scope: "all"`. Invalid legacy documents are omitted and logged by ID.
+  Holiday reads load at most 1,000 documents before date filtering because the
+  collection contains both legacy date IDs and generated IDs; an ID-range query
+  would omit generated documents.
+- Calendar, summary, admin by-date, and leave approval use the employee's
+  `primaryBranchId`. Employees with no primary branch receive all-scope
+  holidays only. When several holidays apply on one day, calendar `holidayName`
+  values are sorted and joined.

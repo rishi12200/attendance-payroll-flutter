@@ -90,7 +90,8 @@ function makeApp() {
   };
   const holidays: HolidayOperations = {
     listHolidays: async () => [],
-    createHoliday: async (_caller, holiday) => holiday,
+    listMine: async () => [],
+    createHoliday: async (_caller, holiday) => ({ id: 'holiday-1', branchIds: [], ...holiday }),
     deleteHoliday: async () => {},
   };
   const app = createApp({
@@ -113,7 +114,7 @@ test('Step 5 endpoints require ID tokens and enforce admin/employee roles', asyn
   const adminOnly: Array<[string, RequestInit?]> = [
     ['/settings'],
     ['/settings', { method: 'PATCH', headers, body: JSON.stringify({ companyName: 'X' }) }],
-    ['/holidays', { method: 'POST', headers, body: JSON.stringify({ date: '2026-10-10', name: 'X' }) }],
+    ['/holidays', { method: 'POST', headers, body: JSON.stringify({ date: '2026-10-10', name: 'X', scope: 'all' }) }],
     ['/holidays/2026-10-10', { method: 'DELETE', headers }],
     ['/attendance?date=2026-10-10'],
     ['/attendance/employee/emp-1/calendar?month=2026-10'],
@@ -178,6 +179,16 @@ test('Step 5 endpoints require ID tokens and enforce admin/employee roles', asyn
     ).status,
     200,
   );
+});
+
+test('employees use GET /holidays/me and cannot choose another branch', async () => {
+  const { app } = makeApp();
+  const mine = await request(app, '/holidays/me?year=2026', { headers: { authorization: 'Bearer employee-token' } });
+  assert.equal(mine.status, 200);
+  const adminPathForEmployee = await request(app, '/holidays?year=2026&branchId=branch-2', { headers: { authorization: 'Bearer employee-token' } });
+  assert.equal(adminPathForEmployee.status, 200);
+  const invalid = await request(app, '/holidays/me?year=20x6', { headers: { authorization: 'Bearer employee-token' } });
+  assert.equal(invalid.status, 400);
 });
 
 test('view routes validate requests and preserve the Step 4 GET /attendance/me response', async () => {

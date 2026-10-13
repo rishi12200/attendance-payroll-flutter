@@ -1,5 +1,6 @@
 import type { AttendanceDay, AttendanceDocument } from './attendance-store';
 import type { EmployeeRecord } from './employee-service';
+import type { HolidayInput } from '../domain/holidays';
 
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export type LeaveType = 'paid' | 'unpaid';
@@ -30,7 +31,7 @@ export interface LeaveTransaction {
   getLeaveRequest(id: string): Promise<LeaveRequestRecord | undefined>;
   getEmployee(uid: string): Promise<EmployeeRecord | undefined>;
   getCompanySettings(): Promise<Record<string, unknown> | undefined>;
-  getHolidays(months: string[]): Promise<string[]>;
+  getHolidays(months: string[]): Promise<HolidayInput[]>;
   getAttendance(id: string): Promise<AttendanceDocument | undefined>;
   getPayrollMonth(month: string): Promise<LeaveMonthLock | undefined>;
   getEmployeeLeaveRequests(empId: string): Promise<LeaveRequestRecord[]>;
