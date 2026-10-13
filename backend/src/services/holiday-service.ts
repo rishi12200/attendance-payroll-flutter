@@ -1,6 +1,6 @@
 import { AppError } from '../errors/app-error';
 import { monthOf } from '../domain/dates';
-import { expandStateToBranchIds, holidayScopesOverlap, normalizeHoliday, type HolidayInput } from '../domain/holidays';
+import { expandStateToBranchIds, findOverlappingHolidays, normalizeHoliday, type HolidayInput } from '../domain/holidays';
 
 export interface HolidayRecord extends Record<string, unknown> {
   id: string; date: string; name: string; scope: 'all' | 'branches'; branchIds: string[];
@@ -52,7 +52,20 @@ export class HolidayService {
     } else branchIds = [];
     const values: HolidayInput = { date: input.date, name: input.name.trim(), scope: input.scope, branchIds };
     const existing = (await this.store.listHolidays(input.date, input.date)).map((raw) => normalizeHoliday(String(raw.id ?? ''), raw)).filter((item): item is HolidayInput => !!item);
-    if (existing.some((item) => item.name === values.name && holidayScopesOverlap(item, values))) throw new AppError(409, 'HOLIDAY_EXISTS', 'An overlapping holiday with this name already exists for this date.');
+    const conflicts = findOverlappingHolidays(existing, values);
+    if (conflicts.length > 0) {
+      const limitedConflicts = conflicts.slice(0, 10);
+      throw new AppError(
+        409,
+        'HOLIDAY_EXISTS',
+        'A holiday already exists on this date for some of these branches.',
+        {
+          conflictingHolidayIds: limitedConflicts.map((item) => String(item.id)),
+          conflictingNames: limitedConflicts.map((item) => String(item.name)),
+          holidayId: String(conflicts[0]?.id),
+        },
+      );
+    }
     const timestamp = this.store.serverTimestamp();
     const id = await this.store.writeHoliday({ values: { date: input.date, name: input.name.trim(), scope: input.scope, branchIds, createdBy: caller.uid, createdAt: timestamp }, audit: { action: 'holiday.create', date: input.date, name: input.name.trim(), by: caller.uid, at: timestamp } });
     const stored = await this.store.getHoliday(id);

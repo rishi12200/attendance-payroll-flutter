@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Timestamp } from 'firebase-admin/firestore';
 import { AppError } from '../errors/app-error';
+import { normalizeHoliday } from '../domain/holidays';
 import type {
   AttendanceBranch,
   AttendanceDay,
@@ -104,8 +105,9 @@ class FakeViewsStore implements AttendanceViewsStore, SettingsStore {
 
   async listHolidays(fromDate: string, toDate: string) {
     return [...this.holidays.values()]
-      .filter((holiday) => holiday.date >= fromDate && holiday.date <= toDate)
-      .sort((left, right) => left.date.localeCompare(right.date));
+      .map((holiday) => normalizeHoliday(holiday.id, holiday))
+      .filter((holiday) => holiday !== undefined && holiday.date! >= fromDate && holiday.date! <= toDate)
+      .sort((left, right) => left!.date!.localeCompare(right!.date!)) as HolidayRecord[];
   }
 
   async listAllHolidays() { return [...this.holidays.values()]; }
@@ -250,10 +252,20 @@ test('holidays create, list sorted, reject duplicates and locked months, and del
     (await holidays.listHolidays(employeeCaller, '2026')).map(({ date }) => date),
     ['2026-10-02', '2026-10-20'],
   );
-  await expectError(
-    holidays.createHoliday(admin, { date: '2026-10-20', name: 'Second', scope: 'all' }),
-    409,
-    'HOLIDAY_EXISTS',
+  await assert.rejects(
+    holidays.createHoliday(admin, { date: '2026-10-20', name: 'A different name', scope: 'all' }),
+    (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal(error.status, 409);
+      assert.equal(error.code, 'HOLIDAY_EXISTS');
+      assert.equal(error.message, 'A holiday already exists on this date for some of these branches.');
+      assert.deepEqual(error.details, {
+        conflictingHolidayIds: ['holiday-1'],
+        conflictingNames: ['Second'],
+        holidayId: 'holiday-1',
+      });
+      return true;
+    },
   );
   store.payrollMonths.set('2026-10', { locked: true });
   await expectError(
@@ -277,11 +289,82 @@ test('branch-scoped holidays do not conflict with disjoint scopes and are filter
   const branchB = await holidays.createHoliday(admin, { date: '2026-10-21', name: 'Regional', scope: 'branches', branchIds: ['branch-2'] });
   assert.notEqual(branchA.id, branchB.id);
   assert.deepEqual((await holidays.listHolidays(admin, '2026', 'branch-2')).map(({ id }) => id), [branchB.id]);
+  await assert.rejects(
+    holidays.createHoliday(admin, { date: '2026-10-21', name: 'Different name', scope: 'branches', branchIds: ['branch-1'] }),
+    (error: unknown) => error instanceof AppError && error.code === 'HOLIDAY_EXISTS',
+  );
   assert.deepEqual((await holidays.listMine(employeeCaller, '2026')).map(({ id }) => id), [branchA.id]);
   store.employeeBranch = null;
   assert.deepEqual(await holidays.listMine(employeeCaller, '2026'), []);
-  await holidays.createHoliday(admin, { date: '2026-10-21', name: 'National', scope: 'all' });
-  assert.equal((await holidays.listMine(employeeCaller, '2026')).length, 1);
+});
+
+test('employee without a primary branch receives only all-scope holidays', async () => {
+  const { store, holidays } = service();
+  const all = await holidays.createHoliday(admin, { date: '2026-10-20', name: 'National', scope: 'all' });
+  await holidays.createHoliday(admin, { date: '2026-10-21', name: 'Regional', scope: 'branches', branchIds: ['branch-1'] });
+  store.employeeBranch = null;
+  assert.deepEqual((await holidays.listMine(employeeCaller, '2026')).map(({ id }) => id), [all.id]);
+});
+
+test('legacy date-keyed holiday blocks any new holiday on that date', async () => {
+  const { store, holidays } = service();
+  store.holidays.set('2026-10-22', { id: '2026-10-22', name: 'Old holiday' } as unknown as HolidayRecord);
+  await assert.rejects(
+    holidays.createHoliday(admin, { date: '2026-10-22', name: 'New name', scope: 'branches', branchIds: ['branch-1'] }),
+    (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal(error.code, 'HOLIDAY_EXISTS');
+      assert.deepEqual(error.details, {
+        conflictingHolidayIds: ['2026-10-22'],
+        conflictingNames: ['Old holiday'],
+        holidayId: '2026-10-22',
+      });
+      return true;
+    },
+  );
+});
+
+test('new holiday succeeds on another date and after the conflict is deleted', async () => {
+  const { store, holidays } = service();
+  const original = await holidays.createHoliday(admin, { date: '2026-10-24', name: 'Original', scope: 'all' });
+  const otherDate = await holidays.createHoliday(admin, { date: '2026-10-25', name: 'Same scope', scope: 'all' });
+  assert.equal(otherDate.date, '2026-10-25');
+  await holidays.deleteHoliday(admin, original.id);
+  const replacement = await holidays.createHoliday(admin, { date: '2026-10-24', name: 'Replacement', scope: 'all' });
+  assert.equal(replacement.date, '2026-10-24');
+  assert.equal(store.holidays.has(original.id), false);
+});
+
+test('listing keeps pre-existing overlapping holiday documents visible', async () => {
+  const { store, holidays } = service();
+  store.holidays.set('legacy-a', { id: 'legacy-a', date: '2026-10-26', name: 'Legacy A' } as unknown as HolidayRecord);
+  store.holidays.set('legacy-b', { id: 'legacy-b', date: '2026-10-26', name: 'Legacy B' } as unknown as HolidayRecord);
+  const listed = await holidays.listHolidays(admin, '2026');
+  assert.deepEqual(listed.filter((item) => item.date === '2026-10-26').map(({ id }) => id), ['legacy-a', 'legacy-b']);
+});
+
+test('holiday conflict details include at most ten overlaps and keep the first ID', async () => {
+  const { store, holidays } = service();
+  for (let index = 0; index < 12; index++) {
+    const id = `legacy-${index}`;
+    store.holidays.set(id, {
+      id,
+      date: '2026-10-27',
+      name: `Old ${index}`,
+      scope: 'all',
+      branchIds: [],
+    });
+  }
+  await assert.rejects(
+    holidays.createHoliday(admin, { date: '2026-10-27', name: 'New', scope: 'all' }),
+    (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal((error.details?.conflictingHolidayIds as string[]).length, 10);
+      assert.equal((error.details?.conflictingNames as string[]).length, 10);
+      assert.equal(error.details?.holidayId, 'legacy-0');
+      return true;
+    },
+  );
 });
 
 function seedBranchHoliday(store: FakeViewsStore, id: string, branchId: string) {
@@ -322,6 +405,33 @@ test('monthly summaries apply branch holidays and still count every day once', a
   for (const summary of [ownSummary, otherSummary]) {
     assert.equal(summary.present + summary.halfDays + summary.absent + summary.paidLeave + summary.unpaidLeave + summary.weeklyOffs + summary.holidays + summary.notJoinedOrLeftDays + summary.pending, summary.daysInMonth);
   }
+});
+
+test('two pre-existing same-date holidays remain one summary day', async () => {
+  const { store, views } = service();
+  store.holidays.set('2026-10-02', {
+    id: '2026-10-02', name: 'Old date-keyed holiday',
+  } as unknown as HolidayRecord);
+  store.holidays.set('old-generated-id', {
+    id: 'old-generated-id', date: '2026-10-02', name: 'Older duplicate',
+  } as unknown as HolidayRecord);
+
+  const calendar = await views.getMyCalendar(employeeCaller, '2026-10');
+  const days = calendar.days as Array<Record<string, unknown>>;
+  const duplicateDay = days.find((day) => day.date === '2026-10-02');
+  assert.equal(duplicateDay?.status, 'HOLIDAY');
+  assert.match(String(duplicateDay?.holidayName), /Old date-keyed holiday/);
+  assert.match(String(duplicateDay?.holidayName), /Older duplicate/);
+
+  const response = await views.getSummary(employeeCaller, '2026-10') as Record<string, unknown>;
+  const summary = response.summary as Record<string, number>;
+  assert.equal(summary.holidays, 1);
+  assert.equal(
+    summary.present + summary.halfDays + summary.absent + summary.paidLeave +
+      summary.unpaidLeave + summary.weeklyOffs + summary.holidays +
+      summary.notJoinedOrLeftDays + summary.pending,
+    summary.daysInMonth,
+  );
 });
 
 test('admin by-date status uses each employee primary branch holiday', async () => {
