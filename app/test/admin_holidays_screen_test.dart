@@ -159,6 +159,28 @@ void main() {
     expect(repository.deletedId, '2026-10-08');
   });
 
+  testWidgets('deletes generated holiday documents by document ID', (
+    tester,
+  ) async {
+    final repository = _FakeViewsRepository()
+      ..holidays = const [
+        AttendanceHoliday(
+          id: 'holiday-generated-id',
+          date: '2026-10-08',
+          name: 'Generated ID day',
+        ),
+      ];
+    await tester.pumpWidget(_app(repository));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('delete-holiday-holiday-generated-id')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-delete-holiday')));
+    await tester.pumpAndSettle();
+    expect(repository.deletedId, 'holiday-generated-id');
+  });
+
   testWidgets('filters by branch and can clear the filter', (tester) async {
     final repository = _FakeViewsRepository();
     await tester.pumpWidget(_app(repository));
