@@ -1,9 +1,10 @@
 import 'package:app/core/api/app_exception.dart';
 import 'package:app/features/attendance/data/attendance_views_providers.dart';
 import 'package:app/features/attendance/data/attendance_views_repository.dart';
-import 'package:app/features/attendance/domain/attendance_helpers.dart';
 import 'package:app/features/attendance/domain/attendance_views.dart';
 import 'package:app/features/attendance/presentation/admin_holidays_screen.dart';
+import 'package:app/features/branches/data/branches_providers.dart';
+import 'package:app/features/branches/domain/branch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +13,10 @@ class _FakeViewsRepository extends Fake implements AttendanceViewsRepository {
   List<AttendanceHoliday> holidays = const [];
   Object? createError;
   AttendanceHoliday? created;
-  String? deletedDate;
+  String? createdScope;
+  List<String>? createdBranchIds;
+  String? deletedId;
+  String? requestedBranchId;
 
   @override
   Future<AttendanceHoliday> createHoliday({
@@ -22,6 +26,8 @@ class _FakeViewsRepository extends Fake implements AttendanceViewsRepository {
     List<String> branchIds = const [],
   }) async {
     if (createError case final error?) throw error;
+    createdScope = scope;
+    createdBranchIds = branchIds;
     return created = AttendanceHoliday(
       id: date,
       date: date,
@@ -33,20 +39,39 @@ class _FakeViewsRepository extends Fake implements AttendanceViewsRepository {
 
   @override
   Future<void> deleteHoliday(String date) async {
-    deletedDate = date;
+    deletedId = date;
+  }
+
+  @override
+  Future<List<AttendanceHoliday>> listHolidays(
+    String year, {
+    String? branchId,
+  }) async {
+    requestedBranchId = branchId;
+    return holidays;
   }
 }
 
-String _currentYear() =>
-    istDateOf(DateTime.now().toUtc().toIso8601String()).substring(0, 4);
+const _branches = [
+  Branch(
+    id: 'branch-a',
+    name: 'Branch A',
+    state: 'Karnataka',
+    lat: 0,
+    lng: 0,
+    radiusMeters: 100,
+    status: BranchStatus.active,
+    createdAt: '',
+    updatedAt: '',
+  ),
+];
 
 Widget _app(_FakeViewsRepository repository) {
-  final year = _currentYear();
   return ProviderScope(
     overrides: [
       attendanceViewsRepositoryProvider.overrideWithValue(repository),
-      attendanceHolidaysProvider(year)
-          .overrideWith((ref) async => repository.holidays),
+      attendanceServerTodayProvider.overrideWith((ref) async => '2026-10-13'),
+      branchesProvider('active').overrideWith((ref) async => _branches),
     ],
     child: const MaterialApp(home: AdminHolidaysScreen()),
   );
@@ -89,6 +114,32 @@ void main() {
     expect(find.text('Holiday added.'), findsOneWidget);
   });
 
+  testWidgets('resolves the state shortcut to selected branch IDs', (
+    tester,
+  ) async {
+    final repository = _FakeViewsRepository();
+    await tester.pumpWidget(_app(repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-holiday')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('holiday-name')),
+      'State day',
+    );
+    await tester.tap(find.text('All branches').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Every branch in a state'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('holiday-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Karnataka').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(repository.createdScope, 'branches');
+    expect(repository.createdBranchIds, ['branch-a']);
+  });
+
   testWidgets('confirms deletion before removing a holiday', (tester) async {
     final repository = _FakeViewsRepository()
       ..holidays = const [
@@ -105,7 +156,22 @@ void main() {
     expect(find.text('Delete holiday?'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('confirm-delete-holiday')));
     await tester.pumpAndSettle();
-    expect(repository.deletedDate, '2026-10-08');
+    expect(repository.deletedId, '2026-10-08');
+  });
+
+  testWidgets('filters by branch and can clear the filter', (tester) async {
+    final repository = _FakeViewsRepository();
+    await tester.pumpWidget(_app(repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('holiday-branch-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Branch A · Karnataka').last);
+    await tester.pumpAndSettle();
+    expect(repository.requestedBranchId, 'branch-a');
+    await tester.tap(find.byKey(const ValueKey('clear-holiday-filter')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('clear-holiday-filter')), findsNothing);
+    expect(find.text('All holidays'), findsOneWidget);
   });
 
   testWidgets('shows the server conflict message for a duplicate holiday', (
