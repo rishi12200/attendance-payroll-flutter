@@ -4,7 +4,7 @@ Mobile app (Flutter) with an Express API on Cloud Run and Firebase (Auth, Firest
 
 The goal of the POC is one thin end-to-end slice that works: login, geofenced check-in, attendance views, leave with types and balances, and payroll with an on-demand payslip. Everything else is deferred.
 
-**Status:** Steps 0 to 5 are done and verified. Step 6 (leave) backend is done and the Flutter screens are built, with live verification still pending. New requirements (leave types, balances, half-day leave, branch-wise holidays) are scheduled as Steps 6.5 and 6.6, **before payroll**, because they change the numbers payroll reads. Regularization, charts and other additive features come after the plan is complete (see section 12, "After the plan").
+**Status:** Steps 0 to 5 are done and verified. Step 6 (leave) is built, with live verification of the Flutter screens still pending. Step 6.5 (branch-wise holidays) is built and being verified. Two small rule fixes found during testing are scheduled as **Step 6.5b** (one holiday per branch per date, and no check-in on a full-day leave). Leave types, balances and half-day leave are **Step 6.6**. All of these come **before payroll**, because they change the numbers payroll reads. Regularization, charts and other additive features come after the plan is complete (see section 12, "After the plan").
 
 ---
 
@@ -16,9 +16,9 @@ The goal of the POC is one thin end-to-end slice that works: login, geofenced ch
 - Employee: check-in and check-out, only when inside an allowed branch
 - Admin: see every employee's in-time, out-time, hours worked and status for a day, and edit it
 - Employee: monthly attendance calendar with a day-count summary
-- **Holidays by branch:** a holiday applies to all branches or to chosen branches. Employees see their own holiday list.
+- **Holidays by branch:** a holiday applies to all branches or to chosen branches, and a branch has at most one holiday on a given date. Employees see their own holiday list.
 - **Leave types:** admin-managed types (Casual, Sick, Annual, Floating Holiday, Unpaid, and so on), each with a paid flag, a yearly quota, and whether half days are allowed
-- **Leave:** employees apply with a type, optionally for a first or second half of one day. Admin approves or rejects.
+- **Leave:** employees apply with a type, optionally for a first or second half of one day. Admin approves or rejects. An employee on an approved **full-day** leave cannot check in that day.
 - **Leave balances** per type (quota, used, pending, remaining), shown as plain data. Charts come later.
 - Payroll: monthly preview, admin adjustments (bonus, other deductions), month lock and unlock
 - Payslip generated on demand, never saved
@@ -33,6 +33,7 @@ The goal of the POC is one thin end-to-end slice that works: login, geofenced ch
 - Attendance regularization with admin-managed types (business trip, WFH, training and so on)
 - Leave balance charts (donut or bar) in the employee Leave tab
 - Leave accrual, carry-forward, manual balance adjustments by the admin
+- Leave type eligibility (for example paternity or adoption leave only for some employees) and prorating quotas for mid-year joiners. In the POC every employee sees every active type and gets the full yearly quota from the first day of the leave year.
 - Per-end sessions for multi-day leave (start in the second half, end in the first half)
 - Revoking an approved leave directly (the admin edits individual days instead)
 - Refunding balance when a leave day is later overridden by a check-in or an admin edit
@@ -165,7 +166,7 @@ Requests approved before Step 6.6 have `leaveType: "paid" | "unpaid"` and no `le
 ### `holidays/{id}` (changed in Step 6.5)
 `date` (date string), `name`, `scope` (`all` | `branches`), `branchIds[]` (when scope is `branches`), `createdBy`, `createdAt`
 
-Several holidays may exist on the same date with different scopes. **Existing holiday documents** are keyed by date (`holidays/2026-10-02`, with `name` only). They stay as they are and are read as `scope: all` with `date` taken from the document id. New holidays use generated ids. The delete endpoint takes the document id, so old and new documents are removed the same way.
+From Step 6.5b a branch has **at most one holiday on a given date**: a new holiday is rejected when it shares a date and any branch with an existing holiday (scope `all` overlaps everything), whatever its name. Holidays on the same date can coexist only when their branch lists do not overlap (a Chennai-only and a Coimbatore-only holiday, for example). Duplicates created before Step 6.5b stay as they are and are shown with their names joined by " / ". **Existing holiday documents** are keyed by date (`holidays/2026-10-02`, with `name` only). They stay as they are and are read as `scope: all` with `date` taken from the document id. New holidays use generated ids. The delete endpoint takes the document id, so old and new documents are removed the same way.
 
 An employee's holidays are those with scope `all`, plus those whose `branchIds` contain the employee's **primary branch**. An employee with no primary branch gets only `all` holidays.
 
@@ -247,7 +248,7 @@ GET /attendance/summary?month=2026-10&empId=...
 5. **Inside one Firestore transaction:** read the month's attendance doc, reject if the day already has a check-in, then write the `checkins` record and set the day to `P` with `inTime`, `inBranchId`, `inDistance`.
 6. **Check-out** (also transactional) needs an existing check-in and no existing out-time. It records `outTime`, branch, distance and `workedMinutes`. Location is recorded but only blocks when `enforceCheckoutLocation` is on.
 7. One in and one out per day. A check-out always belongs to the **day of its check-in**, even if it happens after midnight. If there is no check-out, `workedMinutes` stays empty and the day is flagged "no check-out" for the admin. It does not become absent automatically.
-8. A check-in on a **full-day** leave day turns that day into Present. A check-in on a day with a **half-day** leave keeps the `halfLeave` marker, and the other half counts as present.
+8. **Check-in on leave (Step 6.5b):** if the day's stored status is `L` or `UL` (a full-day leave, whether written by leave approval or marked by an admin), the check-in is rejected with 422 `ON_LEAVE` and nothing is written. The check runs inside the same transaction as the duplicate-check-in test, so a leave approved at the same moment cannot be overwritten. A rejection of this kind is not added to the flagged check-ins list (it is not a location problem). If someone is genuinely called in on a leave day, the admin marks the day Present with the existing attendance edit. A check-in on a day with a **half-day** leave is allowed: the `halfLeave` marker is kept and the other half counts as present. If the employee punched in before the leave was approved, approval skips that day as `has_punch`.
 
 ---
 
@@ -294,7 +295,7 @@ All routes require a valid ID token. `[admin]` means admin only.
 **Holidays (Step 6.5)**
 - `GET /holidays?year=&branchId=` [admin]. Optional branch filter returns the holidays that apply to that branch.
 - `GET /holidays/me?year=` [employee]. The employee's holidays from their primary branch.
-- `POST /holidays` [admin] with `{ date, name, scope, branchIds? }`. A helper field `state` may be accepted to select every active branch in that state. 409 if an identical holiday (same date, same name, overlapping scope) exists, and 409 `MONTH_LOCKED` for locked months.
+- `POST /holidays` [admin] with `{ date, name, scope, branchIds? }`. A helper field `state` may be accepted to select every active branch in that state. 409 `HOLIDAY_EXISTS` when an existing holiday on the same date overlaps the new scope (Step 6.5b: any name, not only the same name), and 409 `MONTH_LOCKED` for locked months.
 - `DELETE /holidays/:id` [admin]
 
 **Leave types (Step 6.6)**
@@ -352,7 +353,7 @@ output: earnings, deductions, gross, net
 **Both roles:** login, profile
 
 **Employee**
-- Home: today's status, distance to branch, check-in and check-out button
+- Home: today's status, distance to branch, check-in and check-out button. On a full-day leave the button is replaced by an "On leave today" card with the leave type once known (Step 6.5b).
 - Attendance calendar with a summary header (present, half days, absent, LOP). Half-day leave days show their session and type.
 - **Leave tab with three sections** (Step 6.5 and 6.6):
   - Requests: my requests with status filter, cancel, and an Apply button
@@ -464,7 +465,18 @@ Backend:
 Flutter:
 - [x] Admin holidays screen: branch filter, add form with scope choice and state shortcut
 - [x] Employee Leave tab gets a Holidays section (year picker, own branch)
-- [ ] **Done when:** a holiday scoped to branch X shows as a holiday for X's employees only, other branches see a normal working day, and every summary still counts each date exactly once
+- [ ] **Done when (live verification pending):** a holiday scoped to branch X shows as a holiday for X's employees only, other branches see a normal working day, and every summary still counts each date exactly once
+
+### Step 6.5b: Holiday and leave-day rules (small fixes)
+Backend:
+- [ ] Holiday creation rejects any overlap with an existing holiday on the same date, whatever the name (409 `HOLIDAY_EXISTS`). Non-overlapping branch scopes on the same date are still allowed. Existing duplicates stay readable.
+- [ ] Check-in is rejected with 422 `ON_LEAVE` when the day's stored status is `L` or `UL`. The check is inside the check-in transaction, nothing is written, and it is not logged as a flagged check-in. Check-out is unchanged.
+- [ ] Tests: overlap truth table including scope `all`, non-overlapping branches on one date, legacy duplicates still listed; check-in on `L` and on `UL` is rejected, a check-in on a normal day and on a `P` day behaves as before, approval racing a check-in cannot both succeed; the summary sum check still equals days in the month
+
+Flutter:
+- [ ] Add-holiday form shows a clear message for the stricter conflict ("A holiday already exists on this date for some of these branches")
+- [ ] Employee punch screen shows an "On leave today" card instead of the Check in button when today is `L` or `UL`, and maps `ON_LEAVE` to a friendly message if the server still rejects
+- [ ] **Done when:** a second holiday on the same date for an overlapping branch is refused, a Chennai-only and a Coimbatore-only holiday can share a date, and an employee with an approved leave today sees "On leave today" and cannot check in
 
 ### Step 6.6: Leave types, balances and half-day leave
 Backend:
@@ -499,6 +511,7 @@ Flutter:
 - [ ] Attendance regularization: employee requests a correction for a past day with an admin-managed type (business trip, WFH, training and so on). Approval sets the day to Present and stores the type. Admin manages the type list in Settings. Needs no payroll change.
 - [ ] Leave balance charts (donut or bar) in the employee Leave tab, on top of `GET /leaves/balance`
 - [ ] Monthly accrual, carry-forward and manual balance adjustments by the admin
+- [ ] Leave type eligibility rules (for example paternity or adoption leave only for some employees) and quota proration for mid-year joiners
 - [ ] Per-end sessions for multi-day leave
 - [ ] Revoke an approved leave, and refund balance when a leave day is overridden
 - [ ] Push notifications (leave decisions, payslip ready) and scheduled jobs
@@ -531,11 +544,16 @@ Flutter:
 | 16 | Over-quota requests | Blocked at apply and re-checked at approval. Not auto-converted to unpaid |
 | 17 | Half-day leave | Single-day requests only, first or second half, and only for types that allow it |
 | 18 | Other half of a half-leave day | Present if the day has a punch, absent if the date has passed without one, otherwise pending |
-| 19 | Holiday scope | All branches or chosen branches, with a state shortcut when adding |
+| 19 | Holiday scope | All branches or chosen branches, with a state shortcut when adding. From Step 6.5b a branch has at most one holiday per date (any name) |
 | 20 | Which branch decides an employee's holidays? | Primary branch. With none, only all-branch holidays |
-| 21 | Overridden leave days | A leave day later overridden by a check-in or admin edit is not refunded (POC limitation) |
+| 21 | Overridden leave days | A leave day later overridden by an admin edit is not refunded (POC limitation). A check-in can no longer override a full-day leave (decision 24) |
 | 22 | Attendance regularization | After the plan is complete (does not affect payroll) |
 | 23 | Leave balance charts | After the plan is complete. Balances are data only until then |
+| 24 | Check-in on a full-day leave (paid or unpaid) | Rejected with `ON_LEAVE`. The admin can mark the day Present with the attendance edit. Half-day leave still allows check-in |
+| 25 | Holiday overlap | One holiday per branch per date. A Chennai-only and a Coimbatore-only holiday may share a date |
+| 26 | Which leave types does an employee see? | Every active type. The admin switches off the ones the company does not use. Eligibility rules are in the backlog |
+| 27 | When do leave days become available? | The full yearly quota from the first day of the leave year, for everyone. No accrual, proration or carry-forward in the POC |
+| 28 | "Paid Leave" as a type | Not a type. Paid or unpaid is a flag on each type. A hidden "Paid Leave (legacy)" type only displays leave approved before Step 6.6 |
 
 ---
 
@@ -548,6 +566,7 @@ Flutter:
 - Reading a whole month of attendance docs for the admin by-date list is fine for a POC but should be revisited with many employees.
 - Changing weekly offs, holidays or a leave type's paid flag changes the derived numbers of any month that is not locked. Lock months once payroll is run.
 - Half-day leave touches the summary maths. Test the sum check (every date counted exactly once) for every combination.
+- An admin edit can still change a leave day to another status, and the leave balance is not refunded in the POC. Check-in can no longer override a full-day leave.
 - Per-branch holidays mean two employees can have different statuses for the same date. The by-date list and payroll must look up holidays per employee, never once for the whole company.
 - Statutory rules need a CA's review before real payroll use.
 
@@ -555,10 +574,11 @@ Flutter:
 
 ## 15. What changed in this revision
 
-- Added requirements: leave types with paid flag and quotas, leave balances, half-day leave (first or second session), branch-wise holidays, and an employee holiday list.
-- These are scheduled as Steps 6.5 and 6.6 **before payroll**, because they change what the summary and payroll read. Regularization, balance charts, accrual and carry-forward were moved to the backlog.
-- New data: `leave_types`, holiday `scope` and `branchIds`, leave request `leaveTypeId`, `session`, `requestedDays` and `writtenDays`, attendance `halfLeave` marker, setting `leaveYearStartMonth`.
-- The summary now allows decimal counts and a new HL status, with the "every date counted once" rule kept.
-- Paid or unpaid is decided by the leave type. The admin no longer picks it when approving.
-- Added migration notes (legacy holidays, legacy approved leave, decide pending requests first) and new decisions 13 to 23.
-- Step statuses updated: Steps 0 to 5 done, Step 6 built and awaiting live verification.
+- Added **Step 6.5b**, two small fixes found while testing Step 6.5:
+  - One holiday per branch per date. The earlier rule only rejected the same name, so two differently named holidays could overlap on one date. Existing duplicates stay readable.
+  - A check-in on a full-day leave (paid or unpaid) is now rejected with `ON_LEAVE`, and the punch screen shows "On leave today". This replaces the earlier default where a check-in turned a leave day into Present.
+- Clarified leave types for Step 6.6: paid or unpaid is a flag on each type (there is no "Paid Leave" type), every active type is visible to every employee, and the full yearly quota is available from the first day of the leave year.
+- Added backlog items: leave type eligibility rules and quota proration for mid-year joiners.
+- New decisions 24 to 28, updated decisions 19 and 21, and one new risk.
+- Step statuses: Step 6.5 built and being verified, Step 6.5b and Step 6.6 not started.
+- Earlier revision: added leave types, balances, half-day leave and branch-wise holidays as Steps 6.5 and 6.6 before payroll, and moved regularization and charts to the backlog.
