@@ -6,6 +6,7 @@ import '../../../core/api/app_exception.dart';
 import '../data/leave_providers.dart';
 import '../domain/leave_helpers.dart';
 import '../domain/leave_request.dart';
+import 'employee_holidays_section.dart';
 
 const _filters = <String, String>{
   'All': 'all',
@@ -25,6 +26,7 @@ class MyLeaveRequestsScreen extends ConsumerStatefulWidget {
 
 class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
   String _status = 'all';
+  int _section = 0;
 
   Future<void> _refresh() async {
     ref.invalidate(myLeaveRequestsProvider(_status));
@@ -80,64 +82,89 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final requests = ref.watch(myLeaveRequestsProvider(_status));
     return Scaffold(
-      appBar: AppBar(title: const Text('My leave requests')),
-      floatingActionButton: FloatingActionButton.extended(
-        key: const ValueKey('apply-leave-button'),
-        onPressed: () => context.push('/employee/leave/apply'),
-        icon: const Icon(Icons.add),
-        label: const Text('Apply for leave'),
-      ),
+      appBar: AppBar(title: const Text('My leave')),
+      floatingActionButton: _section == 0
+          ? FloatingActionButton.extended(
+              key: const ValueKey('apply-leave-button'),
+              onPressed: () => context.push('/employee/leave/apply'),
+              icon: const Icon(Icons.add),
+              label: const Text('Apply for leave'),
+            )
+          : null,
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: DropdownButtonFormField<String>(
-              key: const ValueKey('my-leave-status-filter'),
-              initialValue: _status,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: _filters.entries
-                  .map(
-                    (entry) => DropdownMenuItem(
-                      value: entry.value,
-                      child: Text(entry.key),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) => setState(() => _status = value ?? 'all'),
+            child: SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, label: Text('Requests')),
+                ButtonSegment(value: 1, label: Text('Holidays')),
+              ],
+              selected: {_section},
+              onSelectionChanged: (selection) =>
+                  setState(() => _section = selection.first),
             ),
           ),
-          Expanded(
-            child: requests.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _ErrorView(
-                error: error,
-                onRetry: () => ref.invalidate(myLeaveRequestsProvider(_status)),
-              ),
-              data: (items) => RefreshIndicator(
-                onRefresh: _refresh,
-                child: items.isEmpty
-                    ? ListView(
-                        children: const [
-                          SizedBox(height: 160),
-                          Center(child: Text('No leave requests yet.')),
-                        ],
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 92),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) => _LeaveCard(
-                          request: items[index],
-                          onCancel: () => _cancel(items[index]),
-                          onTap: () => _showLeaveDetails(context, items[index]),
-                        ),
-                      ),
-              ),
-            ),
-          ),
+          if (_section == 0)
+            Expanded(child: _requestsPane())
+          else
+            const Expanded(child: EmployeeHolidaysSection()),
         ],
       ),
+    );
+  }
+
+  Widget _requestsPane() {
+    final requests = ref.watch(myLeaveRequestsProvider(_status));
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: DropdownButtonFormField<String>(
+            key: const ValueKey('my-leave-status-filter'),
+            initialValue: _status,
+            decoration: const InputDecoration(labelText: 'Status'),
+            items: _filters.entries
+                .map(
+                  (entry) => DropdownMenuItem(
+                    value: entry.value,
+                    child: Text(entry.key),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => setState(() => _status = value ?? 'all'),
+          ),
+        ),
+        Expanded(
+          child: requests.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => _ErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(myLeaveRequestsProvider(_status)),
+            ),
+            data: (items) => RefreshIndicator(
+              onRefresh: _refresh,
+              child: items.isEmpty
+                  ? ListView(
+                      children: const [
+                        SizedBox(height: 160),
+                        Center(child: Text('No leave requests yet.')),
+                      ],
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 92),
+                      itemCount: items.length,
+                      itemBuilder: (context, index) => _LeaveCard(
+                        request: items[index],
+                        onCancel: () => _cancel(items[index]),
+                        onTap: () => _showLeaveDetails(context, items[index]),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

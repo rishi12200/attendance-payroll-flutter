@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:app/core/api/app_exception.dart';
 import 'package:app/features/attendance/domain/attendance_controller.dart';
+import 'package:app/features/attendance/data/attendance_views_providers.dart';
+import 'package:app/features/attendance/domain/attendance_views.dart';
 import 'package:app/features/leave/data/leave_providers.dart';
 import 'package:app/features/leave/data/leave_repository.dart';
 import 'package:app/features/leave/domain/leave_form_validation.dart';
@@ -167,6 +169,16 @@ Widget _app(Widget child, _FakeLeaveRepository repository) => ProviderScope(
   overrides: [
     leaveRepositoryProvider.overrideWithValue(repository),
     attendanceControllerProvider.overrideWith(_FakeAttendanceController.new),
+    attendanceServerTodayProvider.overrideWith((ref) async => '2026-10-13'),
+    myHolidaysProvider('2026').overrideWith(
+      (ref) async => const [
+        AttendanceHoliday(
+          id: 'holiday',
+          date: '2026-10-13',
+          name: 'Founders day',
+        ),
+      ],
+    ),
   ],
   child: MaterialApp(home: child),
 );
@@ -210,6 +222,23 @@ Future<void> _pickTwoLeaveDays(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'employee leave tab switches sections and hides Apply on Holidays',
+    (tester) async {
+      final repository = _FakeLeaveRepository();
+      await tester.pumpWidget(_app(const MyLeaveRequestsScreen(), repository));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('apply-leave-button')), findsOneWidget);
+      await tester.tap(find.text('Holidays'));
+      await tester.pumpAndSettle();
+      expect(find.text('Founders day'), findsOneWidget);
+      expect(find.byKey(const ValueKey('apply-leave-button')), findsNothing);
+      await tester.tap(find.text('Requests'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('apply-leave-button')), findsOneWidget);
+    },
+  );
+
   testWidgets('employee leave list shows data, filters and refreshes', (
     tester,
   ) async {
