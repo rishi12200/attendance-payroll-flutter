@@ -163,7 +163,7 @@ At the end of a step, show me `git log --oneline` for the step's commits along w
 
 ## Out of scope (do not build unless asked)
 
-Offline queue, push notifications and scheduled jobs, PDF export, late or short-hours deductions, leave balances, overtime and shifts, TDS and employer contributions, App Check, Secret Manager, rate limiting, branch map picker, multiple punches per day.
+Offline queue, push notifications and scheduled jobs, PDF export, late or short-hours deductions, overtime and shifts, leave accrual, carry-forward, balance charts and type eligibility rules, attendance regularization, TDS and employer contributions, App Check, Secret Manager, rate limiting, branch map picker, multiple punches per day. Leave types, balances and half-day leave are in scope only when the Step 6.6 prompt asks for them.
 
 ## Definition of done for a step
 
