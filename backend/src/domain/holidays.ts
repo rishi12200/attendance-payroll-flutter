@@ -44,3 +44,15 @@ export function holidayScopesOverlap(left: HolidayInput, right: HolidayInput): b
   const a = new Set(left.branchIds ?? []);
   return (right.branchIds ?? []).some((id) => a.has(id));
 }
+
+/** Returns every same-date holiday whose branch scope intersects the candidate. */
+export function findOverlappingHolidays(
+  existing: readonly HolidayInput[],
+  candidate: HolidayInput,
+): HolidayInput[] {
+  return existing.filter(
+    (holiday) =>
+      holiday.date === candidate.date &&
+      holidayScopesOverlap(holiday, candidate),
+  );
+}
