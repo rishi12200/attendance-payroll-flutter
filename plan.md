@@ -462,8 +462,8 @@ Backend:
 - [x] Domain tests: same date with different scopes, employee with no primary branch, old documents, summary sum check still equals days in the month
 
 Flutter:
-- [ ] Admin holidays screen: branch filter, add form with scope choice and state shortcut
-- [ ] Employee Leave tab gets a Holidays section (year picker, own branch)
+- [x] Admin holidays screen: branch filter, add form with scope choice and state shortcut
+- [x] Employee Leave tab gets a Holidays section (year picker, own branch)
 - [ ] **Done when:** a holiday scoped to branch X shows as a holiday for X's employees only, other branches see a normal working day, and every summary still counts each date exactly once
 
 ### Step 6.6: Leave types, balances and half-day leave
