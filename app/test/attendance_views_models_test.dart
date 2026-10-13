@@ -103,10 +103,30 @@ void main() {
 
   test('parses holidays, settings and flagged check-ins', () {
     final holiday = AttendanceHoliday.fromJson({
+      'id': 'legacy-2026-10-08',
       'date': '2026-10-08',
       'name': 'Founders day',
+      'scope': 'branches',
+      'branchIds': ['branch-1'],
+      'branchNames': ['Chennai'],
+      'createdBy': 'admin-1',
+      'createdAt': '2026-10-01T10:00:00.000Z',
     });
+    expect(holiday.id, 'legacy-2026-10-08');
     expect(holiday.name, 'Founders day');
+    expect(holiday.scope, 'branches');
+    expect(holiday.branchIds, ['branch-1']);
+    expect(holiday.branchNames, ['Chennai']);
+
+    final employeeHoliday = AttendanceHoliday.fromJson({
+      'id': 'holiday-1',
+      'date': '2026-10-09',
+      'name': 'Company day',
+    });
+    expect(employeeHoliday.scope, 'all');
+    expect(employeeHoliday.branchIds, isEmpty);
+    expect(employeeHoliday.branchNames, isEmpty);
+    expect(employeeHoliday.createdBy, isNull);
 
     final settings = AttendanceSettings.fromJson({
       'companyName': '',
@@ -138,7 +158,7 @@ void main() {
 
   test('rejects malformed required values', () {
     expect(
-      () => AttendanceHoliday.fromJson({'date': '2026-10-08'}),
+      () => AttendanceHoliday.fromJson({'id': 'x', 'date': '2026-10-08'}),
       throwsFormatException,
     );
     expect(

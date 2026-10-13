@@ -65,129 +65,161 @@ Map<String, Object?> _calendar() => {
   'serverTime': '2026-10-08T07:19:12.000Z',
   'summary': _summary,
   'days': [
-    {
-      'date': '2026-10-08',
-      'weekday': 4,
-      'status': 'PENDING',
-      'derived': false,
-    },
+    {'date': '2026-10-08', 'weekday': 4, 'status': 'PENDING', 'derived': false},
   ],
 };
 
 void main() {
-  test('calls the exact attendance view endpoints and request shapes', () async {
-    final api = _FakeApi();
-    final repository = ApiAttendanceViewsRepository(api);
+  test(
+    'calls the exact attendance view endpoints and request shapes',
+    () async {
+      final api = _FakeApi();
+      final repository = ApiAttendanceViewsRepository(api);
 
-    api.response = _calendar();
-    await repository.getMyCalendar('2026-10');
-    await repository.getEmployeeCalendar('employee 1', '2026-10');
+      api.response = _calendar();
+      await repository.getMyCalendar('2026-10');
+      await repository.getEmployeeCalendar('employee 1', '2026-10');
 
-    api.response = [
-      {
-        'empId': 'employee-1',
-        'empCode': 'EMP001',
-        'name': 'Asha',
-        'summary': _summary,
-      },
-    ];
-    await repository.getSummary('2026-10');
+      api.response = [
+        {
+          'empId': 'employee-1',
+          'empCode': 'EMP001',
+          'name': 'Asha',
+          'summary': _summary,
+        },
+      ];
+      await repository.getSummary('2026-10');
 
-    api.response = {
-      'date': '2026-10-08',
-      'today': '2026-10-08',
-      'totals': {'P': 1},
-      'rows': [],
-    };
-    await repository.getByDate('2026-10-08');
+      api.response = {
+        'date': '2026-10-08',
+        'today': '2026-10-08',
+        'totals': {'P': 1},
+        'rows': [],
+      };
+      await repository.getByDate('2026-10-08');
 
-    api.response = {
-      'date': '2026-10-08',
-      'weekday': 4,
-      'status': 'P',
-      'derived': false,
-    };
-    await repository.editAttendance(
-      empId: 'employee-1',
-      date: '2026-10-08',
-      status: 'P',
-      inTime: '2026-10-08T03:30:00.000Z',
-      reason: 'Corrected attendance',
-    );
+      api.response = {
+        'date': '2026-10-08',
+        'weekday': 4,
+        'status': 'P',
+        'derived': false,
+      };
+      await repository.editAttendance(
+        empId: 'employee-1',
+        date: '2026-10-08',
+        status: 'P',
+        inTime: '2026-10-08T03:30:00.000Z',
+        reason: 'Corrected attendance',
+      );
 
-    api.response = [
-      {'date': '2026-10-08', 'name': 'Founders day'},
-    ];
-    await repository.listHolidays('2026');
-    api.response = {'date': '2026-10-08', 'name': 'Founders day'};
-    await repository.createHoliday(date: '2026-10-08', name: 'Founders day');
-    await repository.deleteHoliday('2026-10-08');
+      api.response = [
+        {
+          'id': 'holiday-1',
+          'date': '2026-10-08',
+          'name': 'Founders day',
+          'scope': 'all',
+        },
+      ];
+      await repository.listHolidays('2026', branchId: 'branch-1');
+      await repository.myHolidays('2026');
+      api.response = {
+        'id': 'holiday-1',
+        'date': '2026-10-08',
+        'name': 'Founders day',
+        'scope': 'all',
+      };
+      await repository.createHoliday(date: '2026-10-08', name: 'Founders day');
+      await repository.createHoliday(
+        date: '2026-10-09',
+        name: 'Regional day',
+        scope: 'branches',
+        branchIds: ['branch-1', 'branch-2'],
+      );
+      await repository.deleteHoliday('holiday-1');
 
-    api.response = {
-      'companyName': '',
-      'weeklyOffDays': [0],
-      'perDayBasis': 'calendar',
-      'maxAccuracyMeters': 100,
-      'rejectMockLocation': true,
-      'enforceCheckoutLocation': false,
-    };
-    await repository.getSettings();
-    await repository.updateSettings({'weeklyOffDays': [0, 6]});
+      api.response = {
+        'companyName': '',
+        'weeklyOffDays': [0],
+        'perDayBasis': 'calendar',
+        'maxAccuracyMeters': 100,
+        'rejectMockLocation': true,
+        'enforceCheckoutLocation': false,
+      };
+      await repository.getSettings();
+      await repository.updateSettings({
+        'weeklyOffDays': [0, 6],
+      });
 
-    api.response = [];
-    await repository.getFlaggedCheckins(
-      from: '2026-10-01',
-      to: '2026-10-08',
-    );
+      api.response = [];
+      await repository.getFlaggedCheckins(from: '2026-10-01', to: '2026-10-08');
 
-    expect(
-      api.requests.map((request) => '${request.method} ${request.path}'),
-      [
-        'GET /attendance/me/calendar',
-        'GET /attendance/employee/employee%201/calendar',
-        'GET /attendance/summary',
-        'GET /attendance',
-        'PATCH /attendance/employee-1/2026-10-08',
-        'GET /holidays',
-        'POST /holidays',
-        'DELETE /holidays/2026-10-08',
-        'GET /settings',
-        'PATCH /settings',
-        'GET /checkins/flagged',
-      ],
-    );
-    expect(api.requests[0].query, {'month': '2026-10'});
-    expect(api.requests[1].query, {'month': '2026-10'});
-    expect(api.requests[2].query, {'month': '2026-10'});
-    expect(api.requests[3].query, {'date': '2026-10-08'});
-    expect(api.requests[4].data, {
-      'status': 'P',
-      'inTime': '2026-10-08T03:30:00.000Z',
-      'reason': 'Corrected attendance',
-    });
-    expect(api.requests[5].query, {'year': '2026'});
-    expect(api.requests[6].data, {
-      'date': '2026-10-08',
-      'name': 'Founders day',
-    });
-    expect(api.requests[9].data, {'weeklyOffDays': [0, 6]});
-    expect(api.requests[10].query, {
-      'from': '2026-10-01',
-      'to': '2026-10-08',
-    });
-  });
+      expect(
+        api.requests.map((request) => '${request.method} ${request.path}'),
+        [
+          'GET /attendance/me/calendar',
+          'GET /attendance/employee/employee%201/calendar',
+          'GET /attendance/summary',
+          'GET /attendance',
+          'PATCH /attendance/employee-1/2026-10-08',
+          'GET /holidays',
+          'GET /holidays/me',
+          'POST /holidays',
+          'POST /holidays',
+          'DELETE /holidays/holiday-1',
+          'GET /settings',
+          'PATCH /settings',
+          'GET /checkins/flagged',
+        ],
+      );
+      expect(api.requests[0].query, {'month': '2026-10'});
+      expect(api.requests[1].query, {'month': '2026-10'});
+      expect(api.requests[2].query, {'month': '2026-10'});
+      expect(api.requests[3].query, {'date': '2026-10-08'});
+      expect(api.requests[4].data, {
+        'status': 'P',
+        'inTime': '2026-10-08T03:30:00.000Z',
+        'reason': 'Corrected attendance',
+      });
+      expect(api.requests[5].query, {'year': '2026', 'branchId': 'branch-1'});
+      expect(api.requests[6].query, {'year': '2026'});
+      expect(api.requests[7].data, {
+        'date': '2026-10-08',
+        'name': 'Founders day',
+        'scope': 'all',
+      });
+      expect(api.requests[8].data, {
+        'date': '2026-10-09',
+        'name': 'Regional day',
+        'scope': 'branches',
+        'branchIds': ['branch-1', 'branch-2'],
+      });
+      expect(api.requests[7].data, isNot(contains('branchIds')));
+      expect(api.requests[7].data, isNot(contains('state')));
+      expect(api.requests[8].data, isNot(contains('state')));
+      expect(api.requests[11].data, {
+        'weeklyOffDays': [0, 6],
+      });
+      expect(api.requests[12].query, {
+        'from': '2026-10-01',
+        'to': '2026-10-08',
+      });
+    },
+  );
 
   test('parses endpoint response models', () async {
     final api = _FakeApi()..response = _calendar();
     final repository = ApiAttendanceViewsRepository(api);
-    expect(await repository.getMyCalendar('2026-10'), isA<AttendanceCalendar>());
+    expect(
+      await repository.getMyCalendar('2026-10'),
+      isA<AttendanceCalendar>(),
+    );
 
     api.response = [
-      {
-        'date': '2026-10-08',
-        'name': 'Founders day',
-      },
+      {'id': 'holiday-1', 'date': '2026-10-08', 'name': 'Founders day'},
     ];
-    expect(await repository.listHolidays('2026'), isA<List<AttendanceHoliday>>());
+    expect(
+      await repository.listHolidays('2026'),
+      isA<List<AttendanceHoliday>>(),
+    );
   });
 }

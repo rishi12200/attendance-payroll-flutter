@@ -111,7 +111,9 @@ class AttendanceCalendar {
   factory AttendanceCalendar.fromJson(Map<String, dynamic> json) {
     final rawDays = json['days'];
     if (rawDays is! List) {
-      throw const FormatException('The server returned an invalid attendance calendar.');
+      throw const FormatException(
+        'The server returned an invalid attendance calendar.',
+      );
     }
     return AttendanceCalendar(
       month: _requiredString(json, 'month'),
@@ -119,9 +121,7 @@ class AttendanceCalendar {
       serverTime: _requiredString(json, 'serverTime'),
       summary: AttendanceSummary.fromJson(_requiredMap(json, 'summary')),
       days: List.unmodifiable(
-        rawDays.map(
-          (item) => AttendanceCalendarDay.fromJson(_asMap(item)),
-        ),
+        rawDays.map((item) => AttendanceCalendarDay.fromJson(_asMap(item))),
       ),
     );
   }
@@ -200,7 +200,9 @@ class AttendanceByDate {
     };
     final rawRows = json['rows'];
     if (rawRows is! List) {
-      throw const FormatException('The server returned invalid attendance rows.');
+      throw const FormatException(
+        'The server returned invalid attendance rows.',
+      );
     }
     return AttendanceByDate(
       date: _requiredString(json, 'date'),
@@ -236,16 +238,47 @@ class AttendanceMonthSummaryRow {
 }
 
 class AttendanceHoliday {
-  const AttendanceHoliday({required this.date, required this.name});
+  const AttendanceHoliday({
+    required this.id,
+    required this.date,
+    required this.name,
+    this.scope = 'all',
+    this.branchIds = const [],
+    this.branchNames = const [],
+    this.createdBy,
+    this.createdAt,
+  });
 
+  final String id;
   final String date;
   final String name;
+  final String scope;
+  final List<String> branchIds;
+  final List<String> branchNames;
+  final String? createdBy;
+  final String? createdAt;
 
-  factory AttendanceHoliday.fromJson(Map<String, dynamic> json) =>
-      AttendanceHoliday(
-        date: _requiredString(json, 'date'),
-        name: _requiredString(json, 'name'),
-      );
+  factory AttendanceHoliday.fromJson(Map<String, dynamic> json) {
+    final date = _requiredString(json, 'date');
+    final rawScope = json['scope'];
+    final scope = rawScope == null
+        ? 'all'
+        : rawScope is String && (rawScope == 'all' || rawScope == 'branches')
+        ? rawScope
+        : throw const FormatException(
+            'The server returned an invalid holiday scope.',
+          );
+    return AttendanceHoliday(
+      id: json['id'] is String ? json['id'] as String : date,
+      date: date,
+      name: _requiredString(json, 'name'),
+      scope: scope,
+      branchIds: _optionalStringList(json['branchIds']),
+      branchNames: _optionalStringList(json['branchNames']),
+      createdBy: _optionalHolidayString(json['createdBy']),
+      createdAt: _optionalHolidayString(json['createdAt']),
+    );
+  }
 }
 
 class AttendanceSettings {
@@ -268,7 +301,9 @@ class AttendanceSettings {
   factory AttendanceSettings.fromJson(Map<String, dynamic> json) {
     final rawWeekdays = json['weeklyOffDays'];
     if (rawWeekdays is! List || rawWeekdays.any((day) => day is! int)) {
-      throw const FormatException('The server returned invalid attendance settings.');
+      throw const FormatException(
+        'The server returned invalid attendance settings.',
+      );
     }
     return AttendanceSettings(
       companyName: _requiredString(json, 'companyName'),
@@ -310,21 +345,20 @@ class FlaggedCheckin {
   final bool? isMocked;
   final String? deviceId;
 
-  factory FlaggedCheckin.fromJson(Map<String, dynamic> json) =>
-      FlaggedCheckin(
-        id: _requiredString(json, 'id'),
-        empCode: _requiredString(json, 'empCode'),
-        name: _requiredString(json, 'name'),
-        type: _requiredString(json, 'type'),
-        date: _requiredString(json, 'date'),
-        serverTime: _requiredString(json, 'serverTime'),
-        rejectReason: _requiredString(json, 'rejectReason'),
-        nearestBranchName: _optionalString(json, 'nearestBranchName'),
-        distanceMeters: _optionalDouble(json, 'distanceMeters'),
-        accuracy: _optionalDouble(json, 'accuracy'),
-        isMocked: _optionalBool(json, 'isMocked'),
-        deviceId: _optionalString(json, 'deviceId'),
-      );
+  factory FlaggedCheckin.fromJson(Map<String, dynamic> json) => FlaggedCheckin(
+    id: _requiredString(json, 'id'),
+    empCode: _requiredString(json, 'empCode'),
+    name: _requiredString(json, 'name'),
+    type: _requiredString(json, 'type'),
+    date: _requiredString(json, 'date'),
+    serverTime: _requiredString(json, 'serverTime'),
+    rejectReason: _requiredString(json, 'rejectReason'),
+    nearestBranchName: _optionalString(json, 'nearestBranchName'),
+    distanceMeters: _optionalDouble(json, 'distanceMeters'),
+    accuracy: _optionalDouble(json, 'accuracy'),
+    isMocked: _optionalBool(json, 'isMocked'),
+    deviceId: _optionalString(json, 'deviceId'),
+  );
 }
 
 String _requiredString(Map<String, dynamic> json, String key) {
@@ -380,11 +414,24 @@ bool? _optionalBool(Map<String, dynamic> json, String key) {
   throw FormatException('The server returned an invalid $key value.');
 }
 
+List<String> _optionalStringList(Object? value) {
+  if (value == null) return const [];
+  if (value is! List) return const [];
+  return List.unmodifiable(value.whereType<String>());
+}
+
+String? _optionalHolidayString(Object? value) {
+  if (value == null) return null;
+  return value is String ? value : null;
+}
+
 Map<String, dynamic> _requiredMap(Map<String, dynamic> json, String key) =>
     _asMap(json[key]);
 
 Map<String, dynamic> _asMap(Object? value) {
   if (value is Map<String, dynamic>) return value;
   if (value is Map) return value.map((key, value) => MapEntry('$key', value));
-  throw const FormatException('The server returned an invalid attendance response.');
+  throw const FormatException(
+    'The server returned an invalid attendance response.',
+  );
 }

@@ -18,9 +18,17 @@ class _FakeViewsRepository extends Fake implements AttendanceViewsRepository {
   Future<AttendanceHoliday> createHoliday({
     required String date,
     required String name,
+    String scope = 'all',
+    List<String> branchIds = const [],
   }) async {
     if (createError case final error?) throw error;
-    return created = AttendanceHoliday(date: date, name: name);
+    return created = AttendanceHoliday(
+      id: date,
+      date: date,
+      name: name,
+      scope: scope,
+      branchIds: branchIds,
+    );
   }
 
   @override
@@ -50,8 +58,8 @@ void main() {
   ) async {
     final repository = _FakeViewsRepository()
       ..holidays = const [
-        AttendanceHoliday(date: '2026-10-20', name: 'Later'),
-        AttendanceHoliday(date: '2026-10-01', name: 'Earlier'),
+        AttendanceHoliday(id: 'later', date: '2026-10-20', name: 'Later'),
+        AttendanceHoliday(id: 'earlier', date: '2026-10-01', name: 'Earlier'),
       ];
     await tester.pumpWidget(_app(repository));
     await tester.pumpAndSettle();
@@ -84,7 +92,11 @@ void main() {
   testWidgets('confirms deletion before removing a holiday', (tester) async {
     final repository = _FakeViewsRepository()
       ..holidays = const [
-        AttendanceHoliday(date: '2026-10-08', name: 'Company day'),
+        AttendanceHoliday(
+          id: '2026-10-08',
+          date: '2026-10-08',
+          name: 'Company day',
+        ),
       ];
     await tester.pumpWidget(_app(repository));
     await tester.pumpAndSettle();

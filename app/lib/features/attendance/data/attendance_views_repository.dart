@@ -17,12 +17,15 @@ abstract interface class AttendanceViewsRepository {
     String? inTime,
     String? outTime,
   });
-  Future<List<AttendanceHoliday>> listHolidays(String year);
+  Future<List<AttendanceHoliday>> listHolidays(String year, {String? branchId});
+  Future<List<AttendanceHoliday>> myHolidays(String year);
   Future<AttendanceHoliday> createHoliday({
     required String date,
     required String name,
+    String scope = 'all',
+    List<String> branchIds = const [],
   });
-  Future<void> deleteHoliday(String date);
+  Future<void> deleteHoliday(String id);
   Future<AttendanceSettings> getSettings();
   Future<AttendanceSettings> updateSettings(Map<String, Object?> changes);
   Future<List<FlaggedCheckin>> getFlaggedCheckins({String? from, String? to});
@@ -105,10 +108,23 @@ class ApiAttendanceViewsRepository implements AttendanceViewsRepository {
   });
 
   @override
-  Future<List<AttendanceHoliday>> listHolidays(String year) =>
+  Future<List<AttendanceHoliday>> listHolidays(
+    String year, {
+    String? branchId,
+  }) => _withApiErrors(() async {
+    return _asJsonList(
+      await _api.getJson(
+        '/holidays',
+        queryParameters: {'year': year, 'branchId': ?branchId},
+      ),
+    ).map(AttendanceHoliday.fromJson).toList(growable: false);
+  });
+
+  @override
+  Future<List<AttendanceHoliday>> myHolidays(String year) =>
       _withApiErrors(() async {
         return _asJsonList(
-          await _api.getJson('/holidays', queryParameters: {'year': year}),
+          await _api.getJson('/holidays/me', queryParameters: {'year': year}),
         ).map(AttendanceHoliday.fromJson).toList(growable: false);
       });
 
@@ -116,17 +132,19 @@ class ApiAttendanceViewsRepository implements AttendanceViewsRepository {
   Future<AttendanceHoliday> createHoliday({
     required String date,
     required String name,
+    String scope = 'all',
+    List<String> branchIds = const [],
   }) => _withApiErrors(() async {
+    final body = <String, Object?>{'date': date, 'name': name, 'scope': scope};
+    if (scope == 'branches') body['branchIds'] = List<String>.of(branchIds);
     return AttendanceHoliday.fromJson(
-      _asJsonMap(
-        await _api.postJson('/holidays', data: {'date': date, 'name': name}),
-      ),
+      _asJsonMap(await _api.postJson('/holidays', data: body)),
     );
   });
 
   @override
-  Future<void> deleteHoliday(String date) => _withApiErrors(() async {
-    await _api.deleteJson('/holidays/$date');
+  Future<void> deleteHoliday(String id) => _withApiErrors(() async {
+    await _api.deleteJson('/holidays/${Uri.encodeComponent(id)}');
   });
 
   @override
