@@ -166,7 +166,7 @@ Requests approved before Step 6.6 have `leaveType: "paid" | "unpaid"` and no `le
 ### `holidays/{id}` (changed in Step 6.5)
 `date` (date string), `name`, `scope` (`all` | `branches`), `branchIds[]` (when scope is `branches`), `createdBy`, `createdAt`
 
-From Step 6.5b a branch has **at most one holiday on a given date**: a new holiday is rejected when it shares a date and any branch with an existing holiday (scope `all` overlaps everything), whatever its name. Holidays on the same date can coexist only when their branch lists do not overlap (a Chennai-only and a Coimbatore-only holiday, for example). Duplicates created before Step 6.5b stay as they are and are shown with their names joined by " / ". **Existing holiday documents** are keyed by date (`holidays/2026-10-02`, with `name` only). They stay as they are and are read as `scope: all` with `date` taken from the document id. New holidays use generated ids. The delete endpoint takes the document id, so old and new documents are removed the same way.
+From Step 6.5b a branch has **at most one holiday on a given date**: a new holiday is rejected when it shares a date and any branch with an existing holiday (scope `all` overlaps everything), whatever its name. Holidays on the same date can coexist only when their branch lists do not overlap (a Chennai-only and a Coimbatore-only holiday, for example). Duplicates created before Step 6.5b stay as they are and are shown with their names joined by `, `. **Existing holiday documents** are keyed by date (`holidays/2026-10-02`, with `name` only). They stay as they are and are read as `scope: all` with `date` taken from the document id. New holidays use generated ids. The delete endpoint takes the document id, so old and new documents are removed the same way.
 
 An employee's holidays are those with scope `all`, plus those whose `branchIds` contain the employee's **primary branch**. An employee with no primary branch gets only `all` holidays.
 
@@ -469,9 +469,9 @@ Flutter:
 
 ### Step 6.5b: Holiday and leave-day rules (small fixes)
 Backend:
-- [ ] Holiday creation rejects any overlap with an existing holiday on the same date, whatever the name (409 `HOLIDAY_EXISTS`). Non-overlapping branch scopes on the same date are still allowed. Existing duplicates stay readable.
-- [ ] Check-in is rejected with 422 `ON_LEAVE` when the day's stored status is `L` or `UL`. The check is inside the check-in transaction, nothing is written, and it is not logged as a flagged check-in. Check-out is unchanged.
-- [ ] Tests: overlap truth table including scope `all`, non-overlapping branches on one date, legacy duplicates still listed; check-in on `L` and on `UL` is rejected, a check-in on a normal day and on a `P` day behaves as before, approval racing a check-in cannot both succeed; the summary sum check still equals days in the month
+- [x] Holiday creation rejects any overlap with an existing holiday on the same date, whatever the name (409 `HOLIDAY_EXISTS`). Non-overlapping branch scopes on the same date are still allowed. Existing duplicates stay readable.
+- [x] Check-in is rejected with 422 `ON_LEAVE` when the day's stored status is `L` or `UL`. The check is inside the check-in transaction, nothing is written, and it is not logged as a flagged check-in. Check-out is unchanged.
+- [x] Tests: overlap truth table including scope `all`, non-overlapping branches on one date, legacy duplicates still listed; check-in on `L` and on `UL` is rejected, a check-in on a normal day and on a `P` day behaves as before, approval racing a check-in cannot both succeed; the summary sum check still equals days in the month
 
 Flutter:
 - [ ] Add-holiday form shows a clear message for the stricter conflict ("A holiday already exists on this date for some of these branches")
@@ -580,5 +580,5 @@ Flutter:
 - Clarified leave types for Step 6.6: paid or unpaid is a flag on each type (there is no "Paid Leave" type), every active type is visible to every employee, and the full yearly quota is available from the first day of the leave year.
 - Added backlog items: leave type eligibility rules and quota proration for mid-year joiners.
 - New decisions 24 to 28, updated decisions 19 and 21, and one new risk.
-- Step statuses: Step 6.5 built and being verified, Step 6.5b and Step 6.6 not started.
+- Step statuses: Step 6.5 built and being verified, Step 6.5b backend done and Flutter pending, Step 6.6 not started.
 - Earlier revision: added leave types, balances, half-day leave and branch-wise holidays as Steps 6.5 and 6.6 before payroll, and moved regularization and charts to the backlog.

@@ -236,8 +236,9 @@ basis.
 - `GET /holidays/me?year=YYYY` — employee-only list for the caller's primary
   branch.
 - `POST /holidays` — admin create with `date`, `name`, `scope` (`all` or
-  `branches`) and `branchIds` or the `state` shortcut. A same-name holiday
-  with an overlapping scope returns 409 `HOLIDAY_EXISTS`.
+  `branches`) and `branchIds` or the `state` shortcut. Any existing holiday
+  with an overlapping scope on that date returns 409 `HOLIDAY_EXISTS`,
+  regardless of its name. Disjoint branch scopes may share a date.
 - `DELETE /holidays/:id` — admin delete by document ID; a missing document returns 404
   `HOLIDAY_NOT_FOUND`.
 - `GET /settings` — admin effective settings, including defaults.
@@ -516,9 +517,9 @@ Authentication failures are 401; wrong-role or inactive-employee requests are
 `VALIDATION_ERROR`.
 
 The calendar and summary endpoints read the resulting `L` and `UL` attendance
-statuses. `leaveRequestId` is included in the calendar day when stored. A later
-check-in on a day marked `L` or `UL` changes that day to `P` with
-`source: "app"`, following the existing Step 4 check-in behavior.
+statuses. `leaveRequestId` is included in the calendar day when stored. A
+check-in on a day marked `L` or `UL` returns 422 `ON_LEAVE` without changing
+attendance or creating a check-in record. Check-out behavior is unchanged.
 
 ## Branch-wise holidays (Step 6.5)
 
@@ -534,6 +535,9 @@ check-in on a day marked `L` or `UL` changes that day to `P` with
 - Multiple holidays may share a date when their scopes do not overlap. A
   holiday list response contains `id`, `date`, `name`, `scope`, `branchIds`,
   `createdBy`, and ISO serialized `createdAt` when present.
+- Holidays created before Step 6.5b are not migrated or removed. Existing
+  duplicate rows remain readable and deletable by document ID; calendar names
+  for multiple holidays on a date stay sorted and joined with `, `.
 - Legacy date-keyed documents that contain only `name` are normalized to
   `scope: "all"`. Invalid legacy documents are omitted and logged by ID.
   Holiday reads load at most 1,000 documents before date filtering because the
@@ -543,3 +547,44 @@ check-in on a day marked `L` or `UL` changes that day to `P` with
   `primaryBranchId`. Employees with no primary branch receive all-scope
   holidays only. When several holidays apply on one day, calendar `holidayName`
   values are sorted and joined.
+
+## Holiday overlap and full-day leave rules (Step 6.5b)
+
+Holiday creation checks every existing holiday on the same date. Scope `all`
+overlaps every scope; two `branches` scopes overlap when they share a branch.
+Any overlap returns 409 with the conflicting document IDs and names, while
+disjoint branch lists can share the date:
+
+```json
+{
+  "error": {
+    "code": "HOLIDAY_EXISTS",
+    "message": "A holiday already exists on this date for some of these branches.",
+    "details": {
+      "conflictingHolidayIds": ["holiday-id"],
+      "conflictingNames": ["Existing holiday"],
+      "holidayId": "holiday-id"
+    }
+  }
+}
+```
+
+When the stored attendance status for the current date is `L` or `UL`,
+`POST /attendance/check-in` returns 422 and makes no attendance or check-in
+write. If the day has a string `leaveRequestId`, it is included in `details`;
+older leave entries without that field omit it. The status in the error is the
+stored `L` or `UL` value:
+
+```json
+{
+  "error": {
+    "code": "ON_LEAVE",
+    "message": "You are on approved leave today.",
+    "details": { "status": "UL", "leaveRequestId": "leave-request-id" }
+  }
+}
+```
+
+Rejected `ON_LEAVE` attempts are not included in `/checkins/flagged`. An admin
+can use the existing attendance edit endpoint to mark the day `P`, after which
+check-in follows the usual duplicate/punch rules. Check-out remains unchanged.
