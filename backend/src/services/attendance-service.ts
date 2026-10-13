@@ -99,19 +99,29 @@ export class AttendanceService {
     const now = this.now();
     const date = istDateOf(now);
     const employee = await this.requireEligibleEmployee(caller.uid, date);
-    const { settings, allowedBranches, nearest, inside } = await this.getLocationContext(
-      employee,
-      input,
-    );
+    const { settings, allowedBranches } = await this.getBranchContext(employee);
 
     if (allowedBranches.length === 0) {
-      await this.rejectAttempt(caller.uid, 'in', date, input, 'NO_BRANCH_ASSIGNED', nearest);
+      await this.rejectAttempt(caller.uid, 'in', date, input, 'NO_BRANCH_ASSIGNED', null);
       throw new AppError(
         422,
         'NO_BRANCH_ASSIGNED',
         'This employee has no active branch assigned.',
       );
     }
+
+    const month = monthOf(date);
+    const dayId = attendanceId(month, caller.uid);
+    const existingDay = (await this.store.getAttendance(dayId))?.days[date];
+    if (existingDay?.status === 'L' || existingDay?.status === 'UL') {
+      // Preserve locked-month precedence when both rules apply.
+      if ((await this.store.getPayrollMonth(month))?.locked === true) {
+        throw this.monthLocked(month);
+      }
+      this.rejectIfOnLeave(existingDay);
+    }
+
+    const { nearest, inside } = this.evaluateLocation(input, allowedBranches);
     if (input.accuracy > settings.maxAccuracyMeters) {
       await this.rejectAttempt(caller.uid, 'in', date, input, 'ACCURACY_TOO_LOW', nearest);
       throw new AppError(
@@ -130,8 +140,6 @@ export class AttendanceService {
       throw this.outsideGeofenceError(nearest, input.accuracy);
     }
 
-    const month = monthOf(date);
-    const dayId = attendanceId(month, caller.uid);
     const serverTime = this.store.serverTimestamp();
     await this.store.runTransaction(async (transaction) => {
       const payrollMonth = await transaction.getPayrollMonth(month);
@@ -139,7 +147,9 @@ export class AttendanceService {
       if (payrollMonth?.locked === true) {
         throw this.monthLocked(month);
       }
-      if (attendance?.days[date]?.inTime !== undefined) {
+      const existingDay = attendance?.days[date];
+      this.rejectIfOnLeave(existingDay);
+      if (existingDay?.inTime !== undefined) {
         throw new AppError(409, 'ALREADY_CHECKED_IN', 'Already checked in for today.');
       }
 
@@ -379,6 +389,17 @@ export class AttendanceService {
     nearest: NearestGeofenceBranch | null;
     inside: boolean;
   }> {
+    const { settings, allowedBranches } = await this.getBranchContext(employee);
+    const { nearest, inside } = this.evaluateLocation(input, allowedBranches);
+    return { settings, allowedBranches, nearest, inside };
+  }
+
+  private async getBranchContext(
+    employee: EmployeeRecord,
+  ): Promise<{
+    settings: Awaited<ReturnType<AttendanceSettingsReader>>;
+    allowedBranches: AttendanceBranch[];
+  }> {
     const [settings, branches] = await Promise.all([
       this.readSettings(),
       this.branches.listBranches(),
@@ -389,6 +410,13 @@ export class AttendanceService {
     const allowedBranches = branches.filter(
       (branch) => branch.status === 'active' && allowedIds.has(branch.id),
     );
+    return { settings, allowedBranches };
+  }
+
+  private evaluateLocation(
+    input: PunchInput,
+    allowedBranches: AttendanceBranch[],
+  ): { nearest: NearestGeofenceBranch | null; inside: boolean } {
     const evaluation = evaluateGeofence({
       lat: input.lat,
       lng: input.lng,
@@ -396,11 +424,25 @@ export class AttendanceService {
       branches: allowedBranches,
     });
     return {
-      settings,
-      allowedBranches,
       nearest: evaluation.nearestBranch,
       inside: evaluation.inside,
     };
+  }
+
+  private rejectIfOnLeave(day: AttendanceDay | undefined): void {
+    if (day?.status !== 'L' && day?.status !== 'UL') return;
+    // Step 6.6's halfLeave marker must remain eligible for check-in.
+    throw new AppError(
+      422,
+      'ON_LEAVE',
+      'You are on approved leave today.',
+      {
+        status: day.status,
+        ...(typeof day.leaveRequestId === 'string'
+          ? { leaveRequestId: day.leaveRequestId }
+          : {}),
+      },
+    );
   }
 
   private async rejectAttempt(

@@ -349,6 +349,8 @@ test('skips weekly offs, holidays and punches while overwriting admin absence', 
     { date: '2026-10-05', reason: 'has_punch' },
     { date: '2026-10-06', reason: 'holiday' },
   ]);
+  assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-05']?.status, 'P');
+  assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-05']?.inTime, timestamp);
   assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-07']?.status, 'L');
 });
 

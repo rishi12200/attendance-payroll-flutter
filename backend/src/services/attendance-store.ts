@@ -50,6 +50,7 @@ export interface AttendanceTransaction {
 export interface AttendanceStore {
   serverTimestamp(): unknown;
   getAttendance(id: string): Promise<AttendanceDocument | undefined>;
+  getPayrollMonth(month: string): Promise<PayrollMonthDocument | undefined>;
   getCompanySettings(): Promise<Record<string, unknown> | undefined>;
   recordCheckin(record: CheckinRecord): Promise<void>;
   runTransaction<T>(

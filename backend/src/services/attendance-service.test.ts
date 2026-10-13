@@ -47,6 +47,8 @@ class FakeAttendanceStore implements AttendanceStore {
   readonly checkins: CheckinRecord[] = [];
   settings: Record<string, unknown> | undefined;
   failRejectedWrites = false;
+  afterEarlyAttendanceRead?: (id: string) => void;
+  readonly events: string[] = [];
   clock = currentTime;
   private transactionTail: Promise<void> = Promise.resolve();
 
@@ -55,7 +57,15 @@ class FakeAttendanceStore implements AttendanceStore {
   }
 
   async getAttendance(id: string) {
-    return this.attendance.get(id);
+    this.events.push('read-early-attendance');
+    const value = this.attendance.get(id);
+    this.afterEarlyAttendanceRead?.(id);
+    this.afterEarlyAttendanceRead = undefined;
+    return value;
+  }
+
+  async getPayrollMonth(month: string) {
+    return this.payrollMonths.get(month);
   }
 
   async getCompanySettings() {
@@ -82,11 +92,28 @@ class FakeAttendanceStore implements AttendanceStore {
       day: AttendanceDay;
     }> = [];
     const stagedCheckins: CheckinRecord[] = [];
+    let wrote = false;
+    const read = <T>(work: () => T): T => {
+      assert.equal(wrote, false, 'transaction read occurred after a write');
+      return work();
+    };
     const transaction: AttendanceTransaction = {
-      getAttendance: async (id) => this.attendance.get(id),
-      getPayrollMonth: async (month) => this.payrollMonths.get(month),
-      setAttendanceDay: (write) => stagedDays.push(write),
-      createCheckin: (record) => stagedCheckins.push(record),
+      getAttendance: async (id) => read(() => {
+        this.events.push('transaction-read-attendance');
+        return this.attendance.get(id);
+      }),
+      getPayrollMonth: async (month) => read(() => {
+        this.events.push('transaction-read-payroll');
+        return this.payrollMonths.get(month);
+      }),
+      setAttendanceDay: (write) => {
+        wrote = true;
+        stagedDays.push(write);
+      },
+      createCheckin: (record) => {
+        wrote = true;
+        stagedCheckins.push(record);
+      },
     };
     try {
       const result = await work(transaction);
@@ -172,7 +199,7 @@ test('check-in persists the accepted punch and responds with the stored time', a
   assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-10']?.source, 'app');
 });
 
-test('check-in replaces paid or unpaid leave with present from the app', async () => {
+test('check-in rejects paid and unpaid full-day leave without writing', async () => {
   for (const status of ['L', 'UL'] as const) {
     const { store, service: attendance } = service();
     store.attendance.set('2026-10_emp-1', {
@@ -182,17 +209,100 @@ test('check-in replaces paid or unpaid leave with present from the app', async (
         '2026-10-10': {
           status,
           source: 'leave',
-          leaveRequestId: 'leave-1',
+            ...(status === 'L' ? { leaveRequestId: 'leave-1' } : {}),
         },
       },
     });
 
-    await attendance.checkIn(caller, input);
-
-    const day = store.attendance.get('2026-10_emp-1')?.days['2026-10-10'];
-    assert.equal(day?.status, 'P');
-    assert.equal(day?.source, 'app');
+    await assert.rejects(attendance.checkIn(caller, input), (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal(error.status, 422);
+      assert.equal(error.code, 'ON_LEAVE');
+      assert.equal(error.message, 'You are on approved leave today.');
+      assert.deepEqual(error.details, status === 'L'
+        ? { status, leaveRequestId: 'leave-1' }
+        : { status });
+      return true;
+    });
+    assert.equal(store.checkins.length, 0);
+    assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-10']?.status, status);
   }
+});
+
+test('ON_LEAVE takes precedence over accuracy, mock-location, and geofence failures', async () => {
+  const scenarios = [
+    { input: { ...input, accuracy: 101 }, settings: { maxAccuracyMeters: 100 } },
+    { input: { ...input, isMocked: true }, settings: { rejectMockLocation: true } },
+    { input: { ...input, lat: 13.02 }, settings: {} },
+  ];
+  for (const scenario of scenarios) {
+    const instance = service({ settings: scenario.settings });
+    instance.store.attendance.set('2026-10_emp-1', {
+      empId: 'emp-1', month: '2026-10',
+      days: { '2026-10-10': { status: 'L', leaveRequestId: 'leave-1' } },
+    });
+    await expectError(instance.service.checkIn(caller, scenario.input), 422, 'ON_LEAVE');
+    assert.equal(instance.store.checkins.length, 0);
+  }
+});
+
+test('the transaction rejects a leave approved after the early read', async () => {
+  const { store, service: attendance } = service();
+  store.afterEarlyAttendanceRead = (id) => {
+    store.attendance.set(id, {
+      empId: 'emp-1', month: '2026-10',
+      days: { '2026-10-10': { status: 'UL', leaveRequestId: 'leave-racing' } },
+    });
+  };
+
+  await expectError(attendance.checkIn(caller, input), 422, 'ON_LEAVE');
+  assert.deepEqual(store.events.slice(-3), [
+    'read-early-attendance',
+    'transaction-read-payroll',
+    'transaction-read-attendance',
+  ]);
+  assert.equal(store.checkins.length, 0);
+  assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-10']?.status, 'UL');
+});
+
+test('normal, present, half-day, absent, holiday and weekly-off days remain check-in eligible', async () => {
+  // Holidays and weekly offs are derived; neither creates a stored L or UL day.
+  for (const status of [undefined, 'P', 'H', 'A'] as const) {
+    const { store, service: attendance } = service();
+    if (status !== undefined) {
+      store.attendance.set('2026-10_emp-1', {
+        empId: 'emp-1', month: '2026-10',
+        days: { '2026-10-10': { status, source: 'admin_edit' } },
+      });
+    }
+    await attendance.checkIn(caller, input);
+    assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-10']?.status, 'P');
+    assert.equal(store.checkins.length, 1);
+  }
+});
+
+test('locked leave month and no assigned branch keep precedence over ON_LEAVE', async () => {
+  const locked = service();
+  locked.store.attendance.set('2026-10_emp-1', { empId: 'emp-1', month: '2026-10', days: { '2026-10-10': { status: 'L' } } });
+  locked.store.payrollMonths.set('2026-10', { locked: true });
+  await expectError(locked.service.checkIn(caller, input), 409, 'MONTH_LOCKED');
+
+  const noBranch = service({ branches: [] });
+  noBranch.store.attendance.set('2026-10_emp-1', { empId: 'emp-1', month: '2026-10', days: { '2026-10-10': { status: 'UL' } } });
+  await expectError(noBranch.service.checkIn(caller, input), 422, 'NO_BRANCH_ASSIGNED');
+});
+
+test('check-in succeeds after the admin marks a leave day Present', async () => {
+  const { store, service: attendance } = service();
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10',
+    days: { '2026-10-10': { status: 'P', source: 'admin_edit' } },
+  });
+  await attendance.checkIn(caller, input);
+  const day = store.attendance.get('2026-10_emp-1')?.days['2026-10-10'];
+  assert.equal(day?.status, 'P');
+  assert.equal(day?.source, 'app');
+  assert.ok(day?.inTime);
 });
 
 test('duplicate and racing check-ins cannot overwrite an existing punch', async () => {
@@ -375,6 +485,16 @@ test('checkout without any open check-in returns NOT_CHECKED_IN even without bra
     409,
     'NOT_CHECKED_IN',
   );
+});
+
+test('checkout on a full-day leave without an open punch returns NOT_CHECKED_IN', async () => {
+  const { store, service: attendance } = service();
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10',
+    days: { '2026-10-10': { status: 'L', leaveRequestId: 'leave-1' } },
+  });
+  await expectError(attendance.checkOut(caller, input), 409, 'NOT_CHECKED_IN');
+  assert.equal(store.checkins.length, 0);
 });
 
 test('checkout location enforcement defaults off and can be enabled', async () => {

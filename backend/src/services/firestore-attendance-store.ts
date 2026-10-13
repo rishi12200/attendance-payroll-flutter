@@ -29,6 +29,13 @@ export class FirestoreAttendanceStore implements AttendanceStore {
     };
   }
 
+  async getPayrollMonth(month: string): Promise<PayrollMonthDocument | undefined> {
+    const snapshot = await this.firestore.collection('payroll_months').doc(month).get();
+    return snapshot.exists
+      ? (snapshot.data() as PayrollMonthDocument)
+      : undefined;
+  }
+
   async getCompanySettings(): Promise<Record<string, unknown> | undefined> {
     const snapshot = await this.firestore
       .collection('settings')
