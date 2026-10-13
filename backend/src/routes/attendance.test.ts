@@ -3,8 +3,10 @@ import { createServer } from 'node:http';
 import test from 'node:test';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { Timestamp } from 'firebase-admin/firestore';
+import { AppError } from '../errors/app-error';
 import { createApp } from '../app';
 import type { AttendanceOperations } from './attendance';
+import type { AttendanceViewsOperations } from './attendance-views';
 
 function identity(uid: string, role: string): DecodedIdToken {
   return {
@@ -42,11 +44,12 @@ async function request(
   }
 }
 
-function makeApp(role: 'admin' | 'employee' = 'employee') {
+function makeApp(role: 'admin' | 'employee' = 'employee', checkInError?: AppError) {
   const calls: string[] = [];
   const attendance: AttendanceOperations = {
     checkIn: async (caller, body) => {
       calls.push(`in:${caller.uid}:${body.deviceId}`);
+      if (checkInError) throw checkInError;
       return { date: '2026-10-10', status: 'P', inTime: Timestamp.fromDate(new Date('2026-10-10T10:00:00Z')) };
     },
     checkOut: async (caller, body) => {
@@ -63,10 +66,19 @@ function makeApp(role: 'admin' | 'employee' = 'employee') {
       };
     },
   };
+  const attendanceViews: AttendanceViewsOperations = {
+    getMyCalendar: async () => ({}),
+    getEmployeeCalendar: async () => ({}),
+    getSummary: async () => ({}),
+    getByDate: async () => ({}),
+    editAttendance: async () => ({}),
+    getFlaggedCheckins: async () => [],
+  };
   const app = createApp({
     verifyIdToken: async () => identity(role === 'admin' ? 'admin-1' : 'emp-1', role),
     getProfile: async () => undefined,
     attendance,
+    attendanceViews,
   });
   return { app, calls };
 }
@@ -81,6 +93,33 @@ const validPunch = JSON.stringify({
   accuracy: 10,
   deviceId: 'device-1',
   isMocked: false,
+});
+
+test('check-in ON_LEAVE returns the 422 error body and flagged check-ins stay empty', async () => {
+  const onLeave = new AppError(
+    422,
+    'ON_LEAVE',
+    'You are on approved leave today.',
+    { status: 'UL', leaveRequestId: 'leave-123' },
+  );
+  const employeeApp = makeApp('employee', onLeave);
+  const rejected = await request(employeeApp.app, '/attendance/check-in', {
+    method: 'POST', headers, body: validPunch,
+  });
+  assert.equal(rejected.status, 422);
+  assert.deepEqual(rejected.body, {
+    error: {
+      code: 'ON_LEAVE',
+      message: 'You are on approved leave today.',
+      details: { status: 'UL', leaveRequestId: 'leave-123' },
+    },
+  });
+  assert.deepEqual(employeeApp.calls, ['in:emp-1:device-1']);
+
+  const adminApp = makeApp('admin');
+  const flagged = await request(adminApp.app, '/checkins/flagged', { headers });
+  assert.equal(flagged.status, 200);
+  assert.deepEqual(flagged.body, []);
 });
 
 test('attendance endpoints require a token and reject admin accounts', async () => {
