@@ -26,14 +26,13 @@ const _branch = Branch(
   updatedAt: '',
 );
 
-MonthAttendance _month({
-  Map<String, AttendanceDay> days = const {},
-}) => MonthAttendance(
-  month: '2026-10',
-  today: '2026-10-07',
-  serverTime: '2026-10-07T12:00:00.000Z',
-  days: days,
-);
+MonthAttendance _month({Map<String, AttendanceDay> days = const {}}) =>
+    MonthAttendance(
+      month: '2026-10',
+      today: '2026-10-07',
+      serverTime: '2026-10-07T12:00:00.000Z',
+      days: days,
+    );
 
 class _FakeAttendanceRepository implements AttendanceRepository {
   _FakeAttendanceRepository(this.response);
@@ -132,12 +131,10 @@ Future<_FakeLocationService> _pumpScreen(
         ),
         signedInUidProvider.overrideWithValue('employee-1'),
         attendanceRepositoryProvider.overrideWithValue(repository),
-        installIdStoreProvider('employee-1').overrideWithValue(
-          _FakeInstallIdStore(),
-        ),
-        employeeBranchesProvider('employee-1').overrideWith(
-          (ref) async => branches,
-        ),
+        installIdStoreProvider('employee-1')
+            .overrideWithValue(_FakeInstallIdStore()),
+        employeeBranchesProvider('employee-1')
+            .overrideWith((ref) async => branches),
         locationServiceProvider.overrideWithValue(locationService),
       ],
       child: const MaterialApp(home: EmployeeAttendanceScreen()),
@@ -148,6 +145,156 @@ Future<_FakeLocationService> _pumpScreen(
 }
 
 void main() {
+  testWidgets(
+    'marker-only half-day keeps Check in and explains the other half',
+    (tester) async {
+      final repository = _FakeAttendanceRepository(
+        _month(
+          days: {
+            '2026-10-07': const AttendanceDay(
+              halfLeave: HalfLeave(
+                session: 'first_half',
+                paid: true,
+                leaveTypeId: 'casual',
+                leaveTypeName: 'Casual Leave',
+                leaveRequestId: 'r1',
+              ),
+            ),
+          },
+        ),
+      );
+      await _pumpScreen(
+        tester,
+        repository: repository,
+        branches: const [_branch],
+        location: LocationSuccess(
+          latitude: 13,
+          longitude: 80,
+          accuracy: 1,
+          isMocked: false,
+        ),
+      );
+      expect(find.text('Check in'), findsOneWidget);
+      expect(
+        find.text(
+          'You have a half-day leave today (first half, Casual Leave). Please check in for the other half.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'P plus half-day marker keeps check in and displays marker info',
+    (tester) async {
+      final repository = _FakeAttendanceRepository(
+        _month(
+          days: {
+            '2026-10-07': const AttendanceDay(
+              status: 'P',
+              halfLeave: HalfLeave(
+                session: 'second_half',
+                paid: false,
+                leaveTypeId: 'unpaid',
+                leaveTypeName: 'Unpaid Leave',
+                leaveRequestId: 'r2',
+              ),
+            ),
+          },
+        ),
+      );
+      await _pumpScreen(
+        tester,
+        repository: repository,
+        branches: const [_branch],
+        location: LocationSuccess(
+          latitude: 13,
+          longitude: 80,
+          accuracy: 1,
+          isMocked: false,
+        ),
+      );
+      expect(find.text('Check in'), findsOneWidget);
+      expect(find.textContaining('second half, Unpaid Leave'), findsOneWidget);
+    },
+  );
+
+  testWidgets('half-day marker takes precedence over L status in the UI', (
+    tester,
+  ) async {
+    final repository = _FakeAttendanceRepository(
+      _month(
+        days: {
+          '2026-10-07': const AttendanceDay(
+            status: 'L',
+            halfLeave: HalfLeave(
+              session: 'first_half',
+              paid: true,
+              leaveTypeId: 'casual',
+              leaveTypeName: 'Casual Leave',
+              leaveRequestId: 'r3',
+            ),
+          ),
+        },
+      ),
+    );
+    await _pumpScreen(
+      tester,
+      repository: repository,
+      branches: const [_branch],
+      location: LocationSuccess(
+        latitude: 13,
+        longitude: 80,
+        accuracy: 1,
+        isMocked: false,
+      ),
+    );
+    expect(find.text('On leave today'), findsNothing);
+    expect(find.text('Check in'), findsOneWidget);
+    expect(find.textContaining('first half, Casual Leave'), findsOneWidget);
+  });
+
+  for (final status in ['L', 'UL']) {
+    testWidgets(
+      '$status still shows On leave today without a check-in button',
+      (tester) async {
+        final repository = _FakeAttendanceRepository(
+          _month(days: {'2026-10-07': AttendanceDay(status: status)}),
+        );
+        await _pumpScreen(
+          tester,
+          repository: repository,
+          branches: const [_branch],
+          location: LocationSuccess(
+            latitude: 13,
+            longitude: 80,
+            accuracy: 1,
+            isMocked: false,
+          ),
+        );
+        expect(find.text('On leave today'), findsOneWidget);
+        expect(find.text('Check in'), findsNothing);
+      },
+    );
+  }
+
+  testWidgets('a missing status and day record do not prevent check-in', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      repository: _FakeAttendanceRepository(_month()),
+      branches: const [_branch],
+      location: LocationSuccess(
+        latitude: 13,
+        longitude: 80,
+        accuracy: 1,
+        isMocked: false,
+      ),
+    );
+    expect(find.text('Not checked in'), findsOneWidget);
+    expect(find.text('Check in'), findsOneWidget);
+  });
   testWidgets('shows not-checked-in state and enables check-in with a branch', (
     tester,
   ) async {
@@ -195,14 +342,16 @@ void main() {
     expect(find.text('Checked in at 02:30 PM'), findsOneWidget);
     expect(find.text('Thoraipakkam'), findsOneWidget);
     expect(
-      tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Check out'),
-      ).onPressed,
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Check out'))
+          .onPressed,
       isNotNull,
     );
   });
 
-  testWidgets('shows completed state and disables the done button', (tester) async {
+  testWidgets('shows completed state and disables the done button', (
+    tester,
+  ) async {
     await _pumpScreen(
       tester,
       repository: _FakeAttendanceRepository(
@@ -227,9 +376,11 @@ void main() {
     expect(find.text('Done for today'), findsWidgets);
     expect(find.text('Worked: 3 h'), findsOneWidget);
     expect(
-      tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Done for today'),
-      ).onPressed,
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Done for today'),
+          )
+          .onPressed,
       isNull,
     );
   });
@@ -252,9 +403,9 @@ void main() {
       findsWidgets,
     );
     expect(
-      tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Check in'),
-      ).onPressed,
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Check in'))
+          .onPressed,
       isNull,
     );
   });
@@ -286,9 +437,7 @@ void main() {
       tester,
       repository: _FakeAttendanceRepository(_month()),
       branches: [_branch],
-      location: const LocationFailure(
-        LocationFailureReason.serviceDisabled,
-      ),
+      location: const LocationFailure(LocationFailureReason.serviceDisabled),
     );
     expect(find.textContaining('Location services are off'), findsOneWidget);
     await tester.tap(find.text('Open location settings'));

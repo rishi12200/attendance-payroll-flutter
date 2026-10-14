@@ -6,10 +6,8 @@ String locationFailureMessage(LocationFailureReason reason) => switch (reason) {
     'Location services are off. Turn them on to continue.',
   LocationFailureReason.permissionDenied =>
     'Location permission was denied. Allow location access to continue.',
-  LocationFailureReason.permissionDeniedForever =>
-    'Location permission is blocked. Open app settings to allow location access.',
-  LocationFailureReason.timeout =>
-    'Could not get an accurate location in time. Move to an open area and retry.',
+  LocationFailureReason.permissionDeniedForever => 'Location permission is blocked. Open app settings to allow location access.',
+  LocationFailureReason.timeout => 'Could not get an accurate location in time. Move to an open area and retry.',
   LocationFailureReason.unknown =>
     'Could not get your location. Please try again.',
 };
@@ -39,6 +37,8 @@ String attendanceErrorMessage(AppException error) {
       return 'No branch is assigned to you yet. Ask your admin.';
     case 'MONTH_LOCKED':
       return error.message;
+    case 'ON_LEAVE':
+      return 'You are on approved leave today.';
   }
   if (error.statusCode == 403) {
     return "Your account can't check in. Contact your admin.";

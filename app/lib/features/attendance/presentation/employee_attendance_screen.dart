@@ -8,6 +8,8 @@ import '../domain/attendance_controller.dart';
 import '../domain/attendance_error_messages.dart';
 import '../domain/attendance_helpers.dart';
 import 'location_estimate.dart';
+import '../../leave/data/leave_providers.dart';
+import '../../leave/domain/leave_type.dart' show sessionLabel;
 
 class EmployeeAttendanceScreen extends ConsumerStatefulWidget {
   const EmployeeAttendanceScreen({super.key});
@@ -154,18 +156,47 @@ class _EmployeeAttendanceScreenState
               data: (branches) => branches.isEmpty,
               orElse: () => false,
             );
+    final halfLeave = state.halfLeave;
+    final typeName = halfLeave == null
+        ? null
+        : halfLeave.leaveTypeName ??
+              ref
+                  .watch(leaveTypesProvider('active'))
+                  .asData
+                  ?.value
+                  .where((type) => type.id == halfLeave.leaveTypeId)
+                  .firstOrNull
+                  ?.name ??
+              'Leave';
+    final halfLeaveInfo = halfLeave == null
+        ? null
+        : 'You have a half-day leave today (${sessionLabel(halfLeave.session).toLowerCase()}, $typeName). Please check in for the other half.';
+    final onLeaveToday =
+        state is AttendanceNotCheckedIn &&
+        state.halfLeave == null &&
+        (state.dayStatus == 'L' || state.dayStatus == 'UL');
     final card = switch (state) {
+      AttendanceNotCheckedIn(dayStatus: 'L' || 'UL', halfLeave: null) =>
+        _statusCard(
+          context,
+          title: 'On leave today',
+          icon: Icons.event_busy,
+          children: const [],
+        ),
       AttendanceNotCheckedIn() => _statusCard(
         context,
         title: 'Not checked in',
         icon: Icons.login,
-        children: const [],
+        children: halfLeaveInfo == null ? const [] : [Text(halfLeaveInfo)],
       ),
       AttendanceCheckedIn(:final inTime, :final branchName) => _statusCard(
         context,
         title: 'Checked in at ${formatIstTime(inTime)}',
         icon: Icons.login,
-        children: [Text(branchName)],
+        children: [
+          Text(branchName),
+          if (halfLeaveInfo != null) Text(halfLeaveInfo),
+        ],
       ),
       AttendanceCompleted(
         :final inTime,
@@ -180,12 +211,14 @@ class _EmployeeAttendanceScreenState
             Text('In: ${formatIstTime(inTime)}'),
             Text('Out: ${formatIstTime(outTime)}'),
             Text('Worked: ${formatWorkedMinutes(workedMinutes)}'),
+            if (halfLeaveInfo != null) Text(halfLeaveInfo),
           ],
         ),
       AttendanceLoading() || AttendanceLoadError() => const SizedBox.shrink(),
     };
     final canPunch =
         !state.isWorking &&
+        !onLeaveToday &&
         (state is AttendanceCheckedIn ||
             state is AttendanceCompleted ||
             (state is AttendanceNotCheckedIn && !isNoBranch));
@@ -227,7 +260,7 @@ class _EmployeeAttendanceScreenState
       children: [
         card,
         const SizedBox(height: 16),
-        SizedBox(height: 56, child: button),
+        if (!onLeaveToday) SizedBox(height: 56, child: button),
         if (state is AttendanceNotCheckedIn &&
             estimate.asData?.value is LocationEstimateAvailable &&
             !(estimate.asData!.value as LocationEstimateAvailable)

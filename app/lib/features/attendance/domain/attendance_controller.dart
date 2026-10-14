@@ -14,15 +14,15 @@ import 'attendance.dart';
 import 'attendance_error_messages.dart';
 import 'attendance_helpers.dart';
 
-final employeeBranchesProvider = FutureProvider.family<List<Branch>, String>(
-  (ref, uid) {
-    if (ref.watch(signedInUidProvider) != uid) {
-      return const <Branch>[];
-    }
-    return ref.watch(branchRepositoryProvider).listBranches();
-  },
-  retry: (_, _) => null,
-);
+final employeeBranchesProvider = FutureProvider.family<List<Branch>, String>((
+  ref,
+  uid,
+) {
+  if (ref.watch(signedInUidProvider) != uid) {
+    return const <Branch>[];
+  }
+  return ref.watch(branchRepositoryProvider).listBranches();
+}, retry: (_, _) => null);
 
 const _bootstrapMonth = '2000-01';
 
@@ -32,7 +32,10 @@ final attendanceControllerProvider =
     );
 
 sealed class AttendanceHomeState {
-  const AttendanceHomeState();
+  const AttendanceHomeState({this.dayStatus, this.halfLeave});
+
+  final String? dayStatus;
+  final HalfLeave? halfLeave;
 
   bool get isWorking => false;
   String? get feedback => null;
@@ -50,6 +53,8 @@ class AttendanceNotCheckedIn extends AttendanceHomeState {
     this.working = false,
     this.feedbackMessage,
     this.failureReason,
+    super.dayStatus,
+    super.halfLeave,
   });
 
   final String today;
@@ -76,6 +81,8 @@ class AttendanceCheckedIn extends AttendanceHomeState {
     this.working = false,
     this.feedbackMessage,
     this.failureReason,
+    super.dayStatus,
+    super.halfLeave,
   });
 
   final String today;
@@ -106,6 +113,8 @@ class AttendanceCompleted extends AttendanceHomeState {
     this.working = false,
     this.feedbackMessage,
     this.failureReason,
+    super.dayStatus,
+    super.halfLeave,
   });
 
   final String today;
@@ -257,10 +266,7 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
       } else {
         state = _setWorking(state, false);
       }
-      state = _setFeedback(
-        state,
-        attendanceErrorMessage(error),
-      );
+      state = _setFeedback(state, attendanceErrorMessage(error));
     } catch (error) {
       if (!_isActiveUser(punchUid)) return;
       state = _setWorking(state, false);
@@ -280,6 +286,15 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
     MonthAttendance current,
     Map<String, AttendanceDay> days,
   ) {
+    final todayDay = days[current.today];
+    if (todayDay?.status == 'L' || todayDay?.status == 'UL') {
+      return AttendanceNotCheckedIn(
+        today: current.today,
+        serverTime: current.serverTime,
+        dayStatus: todayDay?.status,
+        halfLeave: todayDay?.halfLeave,
+      );
+    }
     final open = openCheckIn(days, current.serverTime);
     if (open != null) {
       final branchName = _branchName(open.day.inBranchId);
@@ -289,10 +304,11 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         inTime: open.day.inTime!,
         branchName: branchName,
         serverTime: current.serverTime,
+        dayStatus: days[current.today]?.status,
+        halfLeave: days[current.today]?.halfLeave,
       );
     }
 
-    final todayDay = days[current.today];
     if (todayDay?.inTime != null && todayDay?.outTime != null) {
       return AttendanceCompleted(
         today: current.today,
@@ -301,11 +317,15 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         outTime: todayDay.outTime!,
         workedMinutes: todayDay.workedMinutes ?? 0,
         serverTime: current.serverTime,
+        dayStatus: todayDay.status,
+        halfLeave: todayDay.halfLeave,
       );
     }
     return AttendanceNotCheckedIn(
       today: current.today,
       serverTime: current.serverTime,
+      dayStatus: todayDay?.status,
+      halfLeave: todayDay?.halfLeave,
     );
   }
 
@@ -326,13 +346,20 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
     final message = clearFeedback ? null : current.feedback;
     final failure = clearFeedback ? null : current.locationFailure;
     return switch (current) {
-      AttendanceNotCheckedIn(:final today, :final serverTime) =>
+      AttendanceNotCheckedIn(
+        :final today,
+        :final serverTime,
+        :final dayStatus,
+        :final halfLeave,
+      ) =>
         AttendanceNotCheckedIn(
           today: today,
           serverTime: serverTime,
           working: working,
           feedbackMessage: message,
           failureReason: failure,
+          dayStatus: dayStatus,
+          halfLeave: halfLeave,
         ),
       AttendanceCheckedIn(
         :final today,
@@ -340,6 +367,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         :final inTime,
         :final branchName,
         :final serverTime,
+        :final dayStatus,
+        :final halfLeave,
       ) =>
         AttendanceCheckedIn(
           today: today,
@@ -350,6 +379,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
           working: working,
           feedbackMessage: message,
           failureReason: failure,
+          dayStatus: dayStatus,
+          halfLeave: halfLeave,
         ),
       AttendanceCompleted(
         :final today,
@@ -358,6 +389,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         :final outTime,
         :final workedMinutes,
         :final serverTime,
+        :final dayStatus,
+        :final halfLeave,
       ) =>
         AttendanceCompleted(
           today: today,
@@ -369,6 +402,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
           working: working,
           feedbackMessage: message,
           failureReason: failure,
+          dayStatus: dayStatus,
+          halfLeave: halfLeave,
         ),
       AttendanceLoading() || AttendanceLoadError() => current,
     };
@@ -380,13 +415,21 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
     LocationFailureReason? reason,
   }) {
     return switch (current) {
-      AttendanceNotCheckedIn(:final today, :final serverTime, :final working) =>
+      AttendanceNotCheckedIn(
+        :final today,
+        :final serverTime,
+        :final working,
+        :final dayStatus,
+        :final halfLeave,
+      ) =>
         AttendanceNotCheckedIn(
           today: today,
           serverTime: serverTime,
           working: working,
           feedbackMessage: message,
           failureReason: reason,
+          dayStatus: dayStatus,
+          halfLeave: halfLeave,
         ),
       AttendanceCheckedIn(
         :final today,
@@ -395,6 +438,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         :final branchName,
         :final serverTime,
         :final working,
+        :final dayStatus,
+        :final halfLeave,
       ) =>
         AttendanceCheckedIn(
           today: today,
@@ -405,6 +450,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
           working: working,
           feedbackMessage: message,
           failureReason: reason,
+          dayStatus: dayStatus,
+          halfLeave: halfLeave,
         ),
       AttendanceCompleted(
         :final today,
@@ -414,6 +461,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
         :final workedMinutes,
         :final serverTime,
         :final working,
+        :final dayStatus,
+        :final halfLeave,
       ) =>
         AttendanceCompleted(
           today: today,
@@ -425,6 +474,8 @@ class AttendanceController extends Notifier<AttendanceHomeState> {
           working: working,
           feedbackMessage: message,
           failureReason: reason,
+          dayStatus: dayStatus,
+          halfLeave: halfLeave,
         ),
       AttendanceLoading() || AttendanceLoadError() => current,
     };
