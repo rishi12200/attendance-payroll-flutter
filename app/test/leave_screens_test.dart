@@ -4,6 +4,7 @@ import 'package:app/core/api/app_exception.dart';
 import 'package:app/features/attendance/domain/attendance_controller.dart';
 import 'package:app/features/attendance/data/attendance_views_providers.dart';
 import 'package:app/features/attendance/domain/attendance_views.dart';
+import 'package:app/features/attendance/data/attendance_views_repository.dart';
 import 'package:app/features/leave/data/leave_providers.dart';
 import 'package:app/features/leave/data/leave_repository.dart';
 import 'package:app/features/leave/domain/leave_form_validation.dart';
@@ -14,6 +15,13 @@ import 'package:app/features/leave/presentation/admin_leave_requests_screen.dart
 import 'package:app/features/leave/presentation/admin_leave_types_screen.dart';
 import 'package:app/features/leave/presentation/apply_leave_screen.dart';
 import 'package:app/features/leave/presentation/my_leave_requests_screen.dart';
+import 'package:app/features/leave/presentation/employee_leave_section.dart';
+import 'package:app/features/employees/data/employees_providers.dart';
+import 'package:app/features/employees/domain/employee.dart';
+import 'package:app/features/employees/domain/salary_revision.dart';
+import 'package:app/features/employees/presentation/employee_detail_screen.dart';
+import 'package:app/features/branches/data/branches_providers.dart';
+import 'package:app/features/branches/domain/branch.dart';
 import 'package:app/features/leave/presentation/pending_leave_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,6 +52,12 @@ class _FakeLeaveRepository implements LeaveRepository {
   int cancelCalls = 0;
   int applyCalls = 0;
   int decideCalls = 0;
+  int balanceCalls = 0;
+  String? lastStatus;
+  String? lastEmpId;
+  int? lastAdminCount;
+  int? lastBalanceYear;
+  String? lastBalanceEmpId;
   AppException? applyError;
   AppException? cancelError;
   AppException? decisionError;
@@ -115,9 +129,11 @@ class _FakeLeaveRepository implements LeaveRepository {
     mineCalls++;
     if (mineError != null) throw mineError!;
     if (mineCompleter != null) return mineCompleter!.future;
-    return status == 'all'
+    final result = status == 'all'
         ? List.of(requests)
         : requests.where((item) => item.status.name == status).toList();
+    lastAdminCount = result.length;
+    return result;
   }
 
   @override
@@ -133,6 +149,8 @@ class _FakeLeaveRepository implements LeaveRepository {
   @override
   Future<List<LeaveRequest>> adminList(String status, {String? empId}) async {
     adminCalls++;
+    lastStatus = status;
+    lastEmpId = empId;
     if (adminError != null) throw adminError!;
     if (adminCompleter != null) return adminCompleter!.future;
     return status == 'all'
@@ -175,6 +193,9 @@ class _FakeLeaveRepository implements LeaveRepository {
 
   @override
   Future<LeaveBalance> getBalance({int? year, String? empId}) async {
+    balanceCalls++;
+    lastBalanceYear = year;
+    lastBalanceEmpId = empId;
     if (balanceError != null) throw balanceError!;
     final selectedYear = year ?? 2026;
     return LeaveBalance(
@@ -194,6 +215,17 @@ class _FakeLeaveRepository implements LeaveRepository {
           used: 1,
           pending: 0.5,
           remaining: 6.5,
+        ),
+        BalanceType(
+          leaveTypeId: 'unpaid',
+          name: 'Unpaid Leave',
+          code: 'UL',
+          paid: false,
+          allowHalfDay: true,
+          quota: null,
+          used: 0.5,
+          pending: 0,
+          remaining: null,
         ),
       ],
     );
@@ -311,6 +343,63 @@ Widget _routerApp(_FakeLeaveRepository repository) {
     child: MaterialApp.router(routerConfig: router),
   );
 }
+
+class _EmployeeHolidayRepository extends Fake
+    implements AttendanceViewsRepository {
+  String? requestedYear;
+  String? requestedBranchId;
+  Object? error;
+
+  @override
+  Future<List<AttendanceHoliday>> listHolidays(
+    String year, {
+    String? branchId,
+  }) async {
+    requestedYear = year;
+    requestedBranchId = branchId;
+    if (error != null) throw error!;
+    return const [
+      AttendanceHoliday(
+        id: 'h1',
+        date: '2026-10-20',
+        weekday: 'Tuesday',
+        name: 'Founders Day',
+      ),
+    ];
+  }
+}
+
+const _detailEmployee = Employee(
+  uid: 'emp-1',
+  empCode: 'EMP001',
+  name: 'Asha',
+  email: 'asha@example.com',
+  role: 'employee',
+  status: EmployeeStatus.active,
+  doj: '2024-01-01',
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
+  primaryBranchId: 'branch-1',
+);
+
+Widget _employeeDetailApp(
+  _FakeLeaveRepository leaveRepository, {
+  required Employee employee,
+  _EmployeeHolidayRepository? holidayRepository,
+}) => ProviderScope(
+  key: ValueKey(employee.uid),
+  overrides: [
+    leaveRepositoryProvider.overrideWithValue(leaveRepository),
+    employeeProvider(employee.uid).overrideWith((ref) async => employee),
+    salaryHistoryProvider(employee.uid)
+        .overrideWith((ref) async => <SalaryRevision>[]),
+    branchesProvider('active').overrideWith((ref) async => const <Branch>[]),
+    attendanceServerTodayProvider.overrideWith((ref) async => '2026-10-14'),
+    if (holidayRepository != null)
+      attendanceViewsRepositoryProvider.overrideWithValue(holidayRepository),
+  ],
+  child: MaterialApp(home: EmployeeDetailScreen(id: employee.uid)),
+);
 
 Future<void> _pickTwoLeaveDays(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1000, 1000);
@@ -995,5 +1084,323 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('2'), findsOneWidget);
     expect(repository.adminCalls, 1);
+  });
+
+  testWidgets('employee detail loads admin leave blocks and branch holidays', (
+    tester,
+  ) async {
+    final leave = _FakeLeaveRepository([_request(id: 'private-id')]);
+    final holidays = _EmployeeHolidayRepository();
+    await tester.pumpWidget(
+      _employeeDetailApp(
+        leave,
+        employee: _detailEmployee,
+        holidayRepository: holidays,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Leave'), findsOneWidget);
+    await tester.tap(find.text('Leave'));
+    await tester.pumpAndSettle();
+    expect(leave.lastBalanceEmpId, 'emp-1');
+    expect(leave.lastEmpId, 'emp-1');
+    expect(find.textContaining('6.5 days'), findsOneWidget);
+    expect(find.textContaining('No limit'), findsWidgets);
+    expect(find.text('Showing the latest 200 requests'), findsNothing);
+    expect(find.text('private-id'), findsNothing);
+    expect(holidays.requestedYear, '2026');
+    expect(holidays.requestedBranchId, 'branch-1');
+    await tester.drag(
+      find.byKey(const ValueKey('employee-leave-scroll')),
+      const Offset(0, -900),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Founders Day'), findsOneWidget);
+  });
+
+  testWidgets('pending decision refreshes history and balance', (tester) async {
+    final leave = _FakeLeaveRepository([_request()]);
+    await tester.pumpWidget(
+      _employeeDetailApp(
+        leave,
+        employee: _detailEmployee,
+        holidayRepository: _EmployeeHolidayRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Leave'));
+    await tester.pumpAndSettle();
+    expect(leave.lastStatus, 'all');
+    final balancesBefore = leave.balanceCalls;
+    await tester.drag(
+      find.byKey(const ValueKey('employee-leave-scroll')),
+      const Offset(0, -1000),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Family event').first);
+    await tester.tap(find.text('Family event').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Approve'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirm'));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(leave.decideCalls, 1);
+    expect(leave.adminCalls, greaterThan(1));
+    expect(leave.balanceCalls, greaterThan(balancesBefore));
+  });
+
+  testWidgets('history shows the latest 200 request note at the server cap', (
+    tester,
+  ) async {
+    final requests = List.generate(
+      200,
+      (index) => _request(id: 'leave-$index'),
+    );
+    final repository = _FakeLeaveRepository(requests);
+    const unassigned = Employee(
+      uid: 'emp-cap',
+      empCode: 'EMP200',
+      name: 'Cap User',
+      email: 'cap@example.com',
+      role: 'employee',
+      status: EmployeeStatus.active,
+      doj: '2024-01-01',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          leaveRepositoryProvider.overrideWithValue(repository),
+          leaveBalanceProvider(
+            (year: null, empId: unassigned.uid),
+          ).overrideWith((ref) => repository.getBalance(empId: unassigned.uid)),
+          adminLeaveRequestsProvider((status: 'all', empId: unassigned.uid))
+              .overrideWith((ref) async => requests),
+          branchesProvider('active')
+              .overrideWith((ref) async => const <Branch>[]),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: EmployeeLeaveSection(employee: unassigned)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Showing the latest 200 requests'), findsOneWidget);
+  });
+
+  testWidgets(
+    'leave history filter and year selector use employee scoped queries',
+    (tester) async {
+      final leave = _FakeLeaveRepository([_request()]);
+      await tester.pumpWidget(
+        _employeeDetailApp(
+          leave,
+          employee: _detailEmployee,
+          holidayRepository: _EmployeeHolidayRepository(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Leave'));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey('employee-leave-scroll')),
+        const Offset(0, -500),
+      );
+      await tester.pumpAndSettle();
+      final approvedChip = find.ancestor(
+        of: find.text('Approved'),
+        matching: find.byType(ChoiceChip),
+      );
+      await tester.ensureVisible(approvedChip);
+      await tester.tap(approvedChip);
+      await tester.pumpAndSettle();
+      expect(leave.lastStatus, 'approved');
+      expect(leave.lastEmpId, 'emp-1');
+      await tester.drag(
+        find.byKey(const ValueKey('employee-leave-scroll')),
+        const Offset(0, -100),
+      );
+      await tester.pumpAndSettle();
+      final pendingChip = find.ancestor(
+        of: find.text('Pending'),
+        matching: find.byType(ChoiceChip),
+      );
+      await tester.tap(pendingChip);
+      await tester.pumpAndSettle();
+      expect(leave.lastStatus, 'pending');
+      await tester.drag(
+        find.byKey(const ValueKey('employee-leave-scroll')),
+        const Offset(0, 500),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Previous leave year'));
+      await tester.pumpAndSettle();
+      expect(leave.lastBalanceYear, 2025);
+    },
+  );
+
+  testWidgets(
+    'admin role does not show Leave and unassigned branch skips query',
+    (tester) async {
+      const admin = Employee(
+        uid: 'admin-1',
+        empCode: 'ADM001',
+        name: 'Admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        status: EmployeeStatus.active,
+        doj: '2024-01-01',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      );
+      final leave = _FakeLeaveRepository();
+      await tester.pumpWidget(_employeeDetailApp(leave, employee: admin));
+      await tester.pumpAndSettle();
+      expect(find.text('Leave'), findsNothing);
+
+      const unassigned = Employee(
+        uid: 'emp-2',
+        empCode: 'EMP002',
+        name: 'Ravi',
+        email: 'ravi@example.com',
+        role: 'employee',
+        status: EmployeeStatus.active,
+        doj: '2024-01-01',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      );
+      final holidays = _EmployeeHolidayRepository();
+      await tester.pumpWidget(
+        _employeeDetailApp(
+          leave,
+          employee: unassigned,
+          holidayRepository: holidays,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Leave'));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey('employee-leave-scroll')),
+        const Offset(0, -1000),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'No primary branch is assigned, so only company-wide holidays apply. See the Holidays screen.',
+        ),
+        findsOneWidget,
+      );
+      expect(holidays.requestedBranchId, isNull);
+    },
+  );
+
+  testWidgets('one leave block failure does not hide the other blocks', (
+    tester,
+  ) async {
+    final leave = _FakeLeaveRepository([_request()])
+      ..balanceError = const AppException(
+        code: 'BALANCE_FAILURE',
+        message: 'Balance unavailable',
+        details: {},
+      );
+    await tester.pumpWidget(
+      _employeeDetailApp(
+        leave,
+        employee: _detailEmployee,
+        holidayRepository: _EmployeeHolidayRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Leave'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load leave balances.'), findsOneWidget);
+    expect(find.textContaining('Family event'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const ValueKey('employee-leave-scroll')),
+      const Offset(0, -1500),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Founders Day'), findsOneWidget);
+  });
+
+  testWidgets('decided history opens read-only details without employee IDs', (
+    tester,
+  ) async {
+    final decided = _request(
+      status: LeaveStatus.approved,
+      note: 'Approved by manager',
+      written: const ['2026-10-12'],
+      skipped: const [SkippedDate(date: '2026-10-13', reason: 'weekly_off')],
+    );
+    final leave = _FakeLeaveRepository([decided]);
+    await tester.pumpWidget(
+      _employeeDetailApp(
+        leave,
+        employee: _detailEmployee,
+        holidayRepository: _EmployeeHolidayRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Leave'));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('employee-leave-scroll')),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Family event').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Admin note: Approved by manager'), findsWidgets);
+    expect(find.text('2026-10-12'), findsWidgets);
+    expect(find.text('emp-1'), findsNothing);
+    expect(find.text('Approve'), findsNothing);
+  });
+
+  testWidgets('calendar button navigates to this employee calendar route', (
+    tester,
+  ) async {
+    final repository = _FakeLeaveRepository();
+    final router = GoRouter(
+      initialLocation: '/leave',
+      routes: [
+        GoRoute(
+          path: '/leave',
+          builder: (_, _) =>
+              Scaffold(body: EmployeeLeaveSection(employee: _detailEmployee)),
+        ),
+        GoRoute(
+          path: '/admin/attendance/employee/:id',
+          builder: (_, state) =>
+              Scaffold(body: Text('Calendar ${state.pathParameters['id']}')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          leaveRepositoryProvider.overrideWithValue(repository),
+          branchesProvider('active')
+              .overrideWith((ref) async => const <Branch>[]),
+          adminAttendanceHolidaysProvider((year: '2026', branchId: 'branch-1'))
+              .overrideWith((ref) async => const <AttendanceHoliday>[]),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('employee-leave-scroll')),
+      const Offset(0, -1500),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('View attendance calendar'));
+    await tester.tap(find.text('View attendance calendar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Calendar emp-1'), findsOneWidget);
   });
 }

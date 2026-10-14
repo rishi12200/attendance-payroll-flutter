@@ -147,6 +147,7 @@ void main() {
     for (final adminRoute in [
       '/admin/attendance',
       '/admin/attendance/employee/employee-1?month=2026-10',
+      '/admin/employees/employee-1',
       '/admin/holidays',
       '/admin/settings',
       '/admin/settings/leave-types',

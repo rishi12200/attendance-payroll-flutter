@@ -259,7 +259,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Deactivate'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Deactivate').first);
     await tester.pumpAndSettle();
     expect(find.text('Deactivate employee?'), findsOneWidget);
     expect(repository.deactivateCalls, 0);
