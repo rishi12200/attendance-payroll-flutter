@@ -40,6 +40,12 @@ class FakeLeaveStore implements LeaveStore {
     id: 'annual', name: 'Annual Leave', code: 'AL', paid: true,
     annualQuotaDays: null, allowHalfDay: true, status: 'active', system: false, sortOrder: 1,
   }]]);
+  constructor() {
+    this.types.set('unpaid', {
+      id: 'unpaid', name: 'Unpaid Leave', code: 'UL', paid: false,
+      annualQuotaDays: null, allowHalfDay: true, status: 'active', system: true, sortOrder: 5,
+    });
+  }
   readonly attendance = new Map<string, AttendanceDocument>();
   readonly payrollMonths = new Map<string, { locked?: boolean }>();
   readonly holidays = new Set<string>();
@@ -85,6 +91,7 @@ class FakeLeaveStore implements LeaveStore {
       date: string;
       day: AttendanceDay;
     }> = [];
+    const attendanceMerges: Array<{ id: string; empId: string; month: string; date: string; fields: AttendanceDay }> = [];
     const auditWrites: LeaveAuditRecord[] = [];
     const read = <T>(workRead: () => T): T => {
       assert.equal(wrote, false, 'transaction attempted a read after a write');
@@ -143,6 +150,11 @@ class FakeLeaveStore implements LeaveStore {
         this.events.push('write-attendance');
         attendanceWrites.push(write);
       },
+      mergeAttendanceDay: (write) => {
+        wrote = true;
+        this.events.push('merge-attendance');
+        attendanceMerges.push(write);
+      },
       createAudit: (audit) => {
         wrote = true;
         this.events.push('write-audit');
@@ -168,6 +180,16 @@ class FakeLeaveStore implements LeaveStore {
           days: { ...current.days, [write.date]: write.day },
         });
       }
+      for (const write of attendanceMerges) {
+        const current = this.attendance.get(write.id) ?? {
+          empId: write.empId, month: write.month, days: {},
+        };
+        const previous = current.days[write.date] ?? {};
+        this.attendance.set(write.id, {
+          ...current,
+          days: { ...current.days, [write.date]: { ...previous, ...write.fields } },
+        });
+      }
       this.audits.push(...auditWrites);
       return result;
     } finally {
@@ -177,6 +199,7 @@ class FakeLeaveStore implements LeaveStore {
 
   seedRequest(input: Partial<LeaveRequestRecord> & Pick<LeaveRequestRecord, 'id' | 'fromDate' | 'toDate'>) {
     this.requests.set(input.id, {
+      ...input,
       id: input.id,
       empId: input.empId ?? 'emp-1',
       fromDate: input.fromDate,
@@ -203,12 +226,12 @@ async function expectError(work: Promise<unknown>, status: number, code: string)
   });
 }
 
-async function apply(leaves: LeaveService, fromDate = '2026-10-05', toDate = fromDate) {
-  return leaves.apply(empCaller, { leaveTypeId: 'annual', fromDate, toDate, reason: 'Family event' });
+async function apply(leaves: LeaveService, fromDate = '2026-10-05', toDate = fromDate, leaveTypeId = 'annual') {
+  return leaves.apply(empCaller, { leaveTypeId, fromDate, toDate, reason: 'Family event' });
 }
 
-async function pendingRequest(leaves: LeaveService, fromDate: string, toDate: string) {
-  return apply(leaves, fromDate, toDate);
+async function pendingRequest(leaves: LeaveService, fromDate: string, toDate = fromDate, leaveTypeId = 'annual') {
+  return apply(leaves, fromDate, toDate, leaveTypeId);
 }
 
 test('applies a pending request and enforces the employee joining window', async () => {
@@ -362,7 +385,7 @@ test('cancels only the caller own pending requests', async () => {
 test('approves paid and unpaid requests into L and UL attendance days with audit', async () => {
   for (const leaveType of ['paid', 'unpaid'] as const) {
     const { store, leaves } = service();
-    const request = await pendingRequest(leaves, '2026-10-05', '2026-10-06');
+    const request = await pendingRequest(leaves, '2026-10-05', '2026-10-06', leaveType === 'paid' ? 'annual' : 'unpaid');
     store.attendance.set('2026-10_emp-1', {
       empId: 'emp-1', month: '2026-10',
       days: { '2026-10-05': { status: 'A', note: 'old absent' } },
@@ -371,7 +394,6 @@ test('approves paid and unpaid requests into L and UL attendance days with audit
       caller: admin,
       id: request.id,
       decision: 'approved',
-      leaveType,
       note: 'Approved by manager',
     });
     assert.equal(result.status, 'approved');
@@ -380,7 +402,7 @@ test('approves paid and unpaid requests into L and UL attendance days with audit
     assert.deepEqual(result, await leaves.getById(admin, request.id));
     assert.deepEqual(result.writtenDates, ['2026-10-05', '2026-10-06']);
     assert.deepEqual(result.skippedDates, []);
-    assert.equal(result.leaveType, leaveType);
+    assert.equal(result.paid, leaveType === 'paid');
     assert.equal(result.decisionNote, 'Approved by manager');
     const expected = leaveType === 'paid' ? 'L' : 'UL';
     assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-05']?.status, expected);
@@ -389,7 +411,7 @@ test('approves paid and unpaid requests into L and UL attendance days with audit
     assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-05']?.editedBy, admin.uid);
     assert.equal(store.audits.length, 1);
     assert.equal(store.audits[0]?.requestId, request.id);
-    assert.equal(store.audits[0]?.leaveType, leaveType);
+    assert.equal(store.audits[0]?.leaveTypeId, request.leaveTypeId);
     assert.ok(store.audits[0]?.at instanceof Timestamp);
     const decisionWrite = store.events.indexOf('write-attendance');
     assert.ok(store.events.slice(0, decisionWrite).includes('read-settings'));
@@ -410,7 +432,7 @@ test('skips weekly offs, holidays and punches while overwriting admin absence', 
     },
   });
   const request = await pendingRequest(leaves, '2026-10-04', '2026-10-07');
-  const result = await leaves.decide({ caller: admin, id: request.id, decision: 'approved', leaveType: 'paid' });
+  const result = await leaves.decide({ caller: admin, id: request.id, decision: 'approved' });
   assert.deepEqual(result.writtenDates, ['2026-10-07']);
   assert.deepEqual(result.skippedDates, [
     { date: '2026-10-04', reason: 'weekly_off' },
@@ -435,19 +457,19 @@ test('leave approval classifies scoped holidays by the employee primary branch',
   });
 
   const branchOneRequest = await pendingRequest(leaves, '2026-10-06', '2026-10-06');
-  const branchOneResult = await leaves.decide({ caller: admin, id: branchOneRequest.id, decision: 'approved', leaveType: 'paid' });
+  const branchOneResult = await leaves.decide({ caller: admin, id: branchOneRequest.id, decision: 'approved' });
   assert.deepEqual(branchOneResult.writtenDates, ['2026-10-06']);
 
-  store.seedRequest({ id: 'branch-two-leave', empId: 'emp-2', fromDate: '2026-10-06', toDate: '2026-10-06' });
-  const branchTwoResult = await leaves.decide({ caller: admin, id: 'branch-two-leave', decision: 'approved', leaveType: 'paid' });
+  store.seedRequest({ id: 'branch-two-leave', empId: 'emp-2', fromDate: '2026-10-06', toDate: '2026-10-06', leaveTypeId: 'annual', session: 'full', requestedDates: ['2026-10-06'] });
+  const branchTwoResult = await leaves.decide({ caller: admin, id: 'branch-two-leave', decision: 'approved' });
   assert.deepEqual(branchTwoResult.writtenDates, []);
   assert.deepEqual(branchTwoResult.skippedDates, [{ date: '2026-10-06', reason: 'holiday' }]);
 });
 
 test('writes across two months and creates missing attendance month documents', async () => {
   const { store, leaves } = service();
-  const request = await pendingRequest(leaves, '2026-12-30', '2027-01-02');
-  const result = await leaves.decide({ caller: admin, id: request.id, decision: 'approved', leaveType: 'unpaid' });
+  const request = await pendingRequest(leaves, '2026-12-30', '2027-01-02', 'unpaid');
+  const result = await leaves.decide({ caller: admin, id: request.id, decision: 'approved' });
   assert.equal(result.writtenDates?.length, 4);
   assert.deepEqual([...store.attendance.keys()].sort(), ['2026-12_emp-1', '2027-01_emp-1']);
   assert.equal(store.attendance.get('2026-12_emp-1')?.days['2026-12-30']?.status, 'UL');
@@ -458,7 +480,7 @@ test('locked approval writes nothing; rejection changes only the request', async
   const locked = service();
   const lockedRequest = await pendingRequest(locked.leaves, '2026-10-05', '2026-11-02');
   locked.store.payrollMonths.set('2026-11', { locked: true });
-  await expectError(locked.leaves.decide({ caller: admin, id: lockedRequest.id, decision: 'approved', leaveType: 'paid' }), 409, 'MONTH_LOCKED');
+  await expectError(locked.leaves.decide({ caller: admin, id: lockedRequest.id, decision: 'approved' }), 409, 'MONTH_LOCKED');
   assert.equal(locked.store.requests.get(lockedRequest.id)?.status, 'pending');
   assert.equal(locked.store.attendance.size, 0);
   assert.equal(locked.store.audits.length, 0);
@@ -476,8 +498,8 @@ test('rejects repeated decisions including concurrent approvals', async () => {
   const { leaves } = service();
   const request = await pendingRequest(leaves, '2026-10-05');
   const [first, second] = await Promise.allSettled([
-    leaves.decide({ caller: admin, id: request.id, decision: 'approved', leaveType: 'paid' }),
-    leaves.decide({ caller: { uid: 'admin-2', role: 'admin' }, id: request.id, decision: 'approved', leaveType: 'paid' }),
+    leaves.decide({ caller: admin, id: request.id, decision: 'approved' }),
+    leaves.decide({ caller: { uid: 'admin-2', role: 'admin' }, id: request.id, decision: 'approved' }),
   ]);
   assert.equal(first.status, 'fulfilled');
   assert.equal(second.status, 'rejected');
@@ -494,15 +516,15 @@ test('approves a request that becomes all-skipped after apply and calendar summa
   store.attendance.set('2026-10_emp-1', {
     empId: 'emp-1', month: '2026-10', days: { '2026-10-05': { status: 'P' } },
   });
-  const warning = await leaves.decide({ caller: admin, id: allSkipped.id, decision: 'approved', leaveType: 'paid' });
+  const warning = await leaves.decide({ caller: admin, id: allSkipped.id, decision: 'approved' });
   assert.equal(warning.noDaysWritten, true);
   assert.deepEqual(warning.writtenDates, []);
 
   for (const leaveType of ['paid', 'unpaid'] as const) {
     const instance = service();
     instance.store.settings = { weeklyOffDays: [] };
-    const leave = await pendingRequest(instance.leaves, '2028-02-01');
-    await instance.leaves.decide({ caller: admin, id: leave.id, decision: 'approved', leaveType });
+    const leave = await pendingRequest(instance.leaves, '2028-02-01', '2028-02-01', leaveType === 'paid' ? 'annual' : 'unpaid');
+    await instance.leaves.decide({ caller: admin, id: leave.id, decision: 'approved' });
     const days = Object.fromEntries(
       [...instance.store.attendance.values()].flatMap((document) => Object.entries(document.days)),
     );
@@ -517,4 +539,70 @@ test('approves a request that becomes all-skipped after apply and calendar summa
     assert.equal(calendar.summary.unpaidLeave, leaveType === 'unpaid' ? 1 : 0);
     assert.equal(calendar.summary.lop, leaveType === 'paid' ? 0 : 1);
   }
+});
+
+test('half-day approval merges only the marker and keeps an existing punch', async () => {
+  const { store, leaves } = service();
+  const request = await leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05',
+    reason: 'Appointment', session: 'first_half',
+  });
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10',
+    days: { '2026-10-05': { status: 'P', inTime: timestamp, note: 'preserve' } },
+  });
+  const approved = await leaves.decide({ caller: admin, id: request.id, decision: 'approved' });
+  assert.deepEqual(approved.writtenDates, ['2026-10-05']);
+  assert.equal(approved.writtenDays, 0.5);
+  assert.deepEqual(store.attendance.get('2026-10_emp-1')?.days['2026-10-05'], {
+    status: 'P', inTime: timestamp, note: 'preserve',
+    halfLeave: { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: request.id },
+  });
+});
+
+test('half-day approval skips existing full and half leave markers in order', async () => {
+  for (const status of ['L', 'UL', 'H']) {
+    const { store, leaves } = service();
+    const request = await leaves.apply(empCaller, {
+      leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05',
+      reason: 'Appointment', session: 'second_half',
+    });
+    store.attendance.set('2026-10_emp-1', {
+      empId: 'emp-1', month: '2026-10',
+      days: { '2026-10-05': { status } },
+    });
+    const result = await leaves.decide({ caller: admin, id: request.id, decision: 'approved' });
+    assert.deepEqual(result.skippedDates, [{ date: '2026-10-05', reason: status === 'H' ? 'half_day_marked' : 'already_on_leave' }]);
+    assert.equal(result.writtenDays, 0);
+  }
+});
+
+test('legacy pending requests cannot be approved but can be rejected', async () => {
+  const { store, leaves } = service();
+  store.seedRequest({ id: 'legacy', fromDate: '2026-10-05', toDate: '2026-10-05' });
+  await expectError(leaves.decide({ caller: admin, id: 'legacy', decision: 'approved' }), 409, 'LEAVE_TYPE_MISSING');
+  const rejected = await leaves.decide({ caller: admin, id: 'legacy', decision: 'rejected' });
+  assert.equal(rejected.status, 'rejected');
+  assert.equal(store.attendance.size, 0);
+});
+
+test('approval uses the current paid flag and rechecks quota against approved leave', async () => {
+  const changed = service();
+  const request = await pendingRequest(changed.leaves, '2026-10-05');
+  changed.store.types.set('annual', { ...changed.store.types.get('annual')!, paid: false });
+  await changed.leaves.decide({ caller: admin, id: request.id, decision: 'approved' });
+  assert.equal(changed.store.attendance.get('2026-10_emp-1')?.days['2026-10-05']?.status, 'UL');
+
+  const quota = service();
+  quota.store.types.set('annual', { ...quota.store.types.get('annual')!, annualQuotaDays: 1 });
+  const waiting = await quota.leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05',
+    reason: 'x', session: 'first_half',
+  });
+  quota.store.seedRequest({
+    id: 'approved-elsewhere', fromDate: '2026-10-06', toDate: '2026-10-06',
+    status: 'approved', leaveTypeId: 'annual', session: 'full', writtenDates: ['2026-10-06'],
+  });
+  await expectError(quota.leaves.decide({ caller: admin, id: waiting.id, decision: 'approved' }), 422, 'QUOTA_EXCEEDED');
+  assert.equal(quota.store.attendance.size, 0);
 });

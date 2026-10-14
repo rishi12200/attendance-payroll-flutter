@@ -141,6 +141,20 @@ export class FirestoreLeaveStore implements LeaveStore {
             );
           }
         },
+        mergeAttendanceDay: ({ id, empId, month, date, fields }) => {
+          const reference = attendance.doc(id);
+          if (existingAttendance.has(id)) {
+            for (const [field, value] of Object.entries(fields)) {
+              firestoreTransaction.update(reference, new FieldPath('days', date, field), value);
+            }
+          } else {
+            firestoreTransaction.set(
+              reference,
+              { empId, month, days: { [date]: fields } },
+              { merge: true },
+            );
+          }
+        },
         createAudit: (audit: LeaveAuditRecord) => {
           firestoreTransaction.create(auditLogs.doc(), audit);
         },

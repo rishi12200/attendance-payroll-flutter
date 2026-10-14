@@ -46,6 +46,13 @@ export interface LeaveTransaction {
     date: string;
     day: AttendanceDay;
   }): void;
+  mergeAttendanceDay(input: {
+    id: string;
+    empId: string;
+    month: string;
+    date: string;
+    fields: AttendanceDay;
+  }): void;
   createAudit(audit: LeaveAuditRecord): void;
 }
 

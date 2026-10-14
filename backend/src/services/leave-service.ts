@@ -2,6 +2,7 @@ import { AppError } from '../errors/app-error';
 import { attendanceSettingsFromDocument } from '../domain/attendance';
 import {
   classifyLeaveDates,
+  classifyHalfLeaveDate,
   expandDateRange,
   monthsTouched,
   rangesOverlap,
@@ -11,11 +12,9 @@ import type {
   LeaveRequestRecord,
   LeaveStatus,
   LeaveStore,
-  LeaveType,
 } from './leave-store';
 import { holidayAppliesToBranch } from '../domain/holidays';
 import { computeBalances, countRequestedDates, dayWeight, splitByLeaveYear, wouldExceedQuota, type LeaveSession } from '../domain/leave-quantity';
-import { leaveYearByYear } from '../domain/leave-year';
 
 const MAX_LIST_READS = 200;
 const activeStatuses = new Set<LeaveStatus>(['pending', 'approved']);
@@ -32,7 +31,7 @@ export interface LeaveServiceDependencies {
 export type LeaveDto = Pick<LeaveRequestRecord,
   'id' | 'empId' | 'fromDate' | 'toDate' | 'reason' | 'status' | 'createdAt' | 'updatedAt'
 > & Pick<LeaveRequestRecord, 'leaveTypeId' | 'leaveTypeName' | 'paid' | 'session'> & Partial<Pick<LeaveRequestRecord,
-  'leaveType' | 'decidedBy' | 'decidedAt' | 'decisionNote' | 'writtenDates' | 'skippedDates' | 'requestedDates' | 'requestedDays'
+  'leaveType' | 'decidedBy' | 'decidedAt' | 'decisionNote' | 'writtenDates' | 'skippedDates' | 'requestedDates' | 'requestedDays' | 'writtenDays'
 >>;
 
 export class LeaveService {
@@ -225,7 +224,6 @@ export class LeaveService {
     caller: LeaveCaller;
     id: string;
     decision: 'approved' | 'rejected';
-    leaveType?: LeaveType;
     note?: string;
   }): Promise<LeaveDto & { noDaysWritten?: true }> {
     this.requireRole(input.caller.role, 'admin');
@@ -235,23 +233,6 @@ export class LeaveService {
       if (request.status !== 'pending') {
         throw new AppError(409, 'ALREADY_DECIDED', 'This leave request is no longer pending.');
       }
-
-      const range = this.expandRequest(request.fromDate, request.toDate);
-      const months = monthsTouched(request.fromDate, request.toDate);
-      const [employee, settingsDocument] = await Promise.all([
-        transaction.getEmployee(request.empId),
-        transaction.getCompanySettings(),
-      ]);
-      if (!employee || employee.role !== 'employee') {
-        throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee was not found.');
-      }
-
-      const ids = months.map((month) => attendanceId(month, request.empId));
-      const [holidayDates, attendanceDocuments, payrollMonths] = await Promise.all([
-        transaction.getHolidays(months),
-        Promise.all(ids.map((id) => transaction.getAttendance(id))),
-        Promise.all(months.map((month) => transaction.getPayrollMonth(month))),
-      ]);
 
       if (input.decision === 'rejected') {
         transaction.updateLeaveRequest(input.id, {
@@ -264,47 +245,123 @@ export class LeaveService {
         return false;
       }
 
+      if (typeof request.leaveTypeId !== 'string') {
+        throw new AppError(409, 'LEAVE_TYPE_MISSING', 'This older request has no leave type. Reject it or ask the employee to cancel and reapply.');
+      }
+      const months = monthsTouched(request.fromDate, request.toDate);
+      const range = this.expandRequest(request.fromDate, request.toDate);
+      const ids = months.map((month) => attendanceId(month, request.empId));
+      const [employee, settingsDocument, leaveType, holidayDates, attendanceDocuments, payrollMonths, priorRequests] = await Promise.all([
+        transaction.getEmployee(request.empId),
+        transaction.getCompanySettings(),
+        transaction.getLeaveType(request.leaveTypeId),
+        transaction.getHolidays(months),
+        Promise.all(ids.map((id) => transaction.getAttendance(id))),
+        Promise.all(months.map((month) => transaction.getPayrollMonth(month))),
+        transaction.getEmployeeLeaveRequests(request.empId),
+      ]);
+      if (!employee || employee.role !== 'employee') {
+        throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee was not found.');
+      }
+      if (!leaveType) throw new AppError(404, 'LEAVE_TYPE_NOT_FOUND', 'Leave type was not found.');
+
       const lockedIndex = payrollMonths.findIndex((month) => month?.locked === true);
       if (lockedIndex >= 0) throw this.monthLocked(months[lockedIndex]!);
       const settings = attendanceSettingsFromDocument(settingsDocument);
-      const days: Record<string, { status?: unknown }> = {};
+      const days: Record<string, { status?: unknown; halfLeave?: unknown }> = {};
       attendanceDocuments.forEach((document) => {
         if (document) {
           for (const [date, day] of Object.entries(document.days)) {
-            days[date] = { status: day.status };
+            days[date] = { status: day.status, halfLeave: day.halfLeave };
           }
         }
       });
-      const classification = classifyLeaveDates({
-        dates: range,
-        doj: typeof employee.doj === 'string' ? employee.doj : null,
-        dol: typeof employee.dol === 'string' ? employee.dol : null,
-        holidays: new Set(holidayDates.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null)).map((holiday) => String(holiday.date))),
-        weeklyOffDays: settings.weeklyOffDays,
-        days,
-      });
-      const timestamp = this.store.serverTimestamp();
-      for (const date of classification.toWrite) {
-        const month = date.slice(0, 7);
-        transaction.setAttendanceDay({
-          id: attendanceId(month, request.empId),
-          empId: request.empId,
-          month,
-          date,
-          day: {
-            status: input.leaveType === 'paid' ? 'L' : 'UL',
-            source: 'leave',
-            leaveRequestId: input.id,
-            editedBy: input.caller.uid,
-            editedAt: timestamp,
-          },
+      const holidaySet = new Set(holidayDates
+        .filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null))
+        .map((holiday) => String(holiday.date)));
+      const isHalfDay = request.session === 'first_half' || request.session === 'second_half';
+      const weight = dayWeight(isHalfDay ? request.session as 'first_half' | 'second_half' : 'full');
+      let writtenDates: string[];
+      let skippedDates: Array<{ date: string; reason: string }>;
+      if (isHalfDay) {
+        const date = range[0];
+        const result = date === undefined
+          ? { write: false as const, reason: 'already_on_leave' as const }
+          : classifyHalfLeaveDate({
+            date,
+            doj: typeof employee.doj === 'string' ? employee.doj : null,
+            dol: typeof employee.dol === 'string' ? employee.dol : null,
+            holidayMap: holidaySet,
+            weeklyOffDays: settings.weeklyOffDays,
+            day: days[date],
+          });
+        writtenDates = result.write ? [date!] : [];
+        skippedDates = result.write ? [] : [{ date: date ?? request.fromDate, reason: result.reason }];
+      } else {
+        const classification = classifyLeaveDates({
+          dates: range,
+          doj: typeof employee.doj === 'string' ? employee.doj : null,
+          dol: typeof employee.dol === 'string' ? employee.dol : null,
+          holidays: holidaySet,
+          weeklyOffDays: settings.weeklyOffDays,
+          days,
         });
+        writtenDates = classification.toWrite;
+        skippedDates = classification.skipped;
       }
+
+      const yearSplits = splitByLeaveYear(writtenDates, weight, settings.leaveYearStartMonth);
+      for (const split of yearSplits) {
+        if (leaveType.annualQuotaDays === null) continue;
+        const approved = priorRequests.filter((prior) => prior.status === 'approved');
+        const balance = computeBalances({
+          types: [leaveType], requests: approved,
+          yearStartDate: split.startDate, yearEndDate: split.endDate,
+        })[0]!;
+        if (wouldExceedQuota(leaveType.annualQuotaDays, balance.used, 0, split.days)) {
+          throw new AppError(422, 'QUOTA_EXCEEDED', `The ${leaveType.name} quota for ${split.yearLabel} would be exceeded.`, {
+            leaveTypeId: leaveType.id,
+            leaveTypeName: leaveType.name,
+            yearLabel: split.yearLabel,
+            quota: leaveType.annualQuotaDays,
+            used: balance.used,
+            pending: 0,
+            requested: split.days,
+            remaining: leaveType.annualQuotaDays - balance.used,
+          });
+        }
+      }
+      const timestamp = this.store.serverTimestamp();
+      for (const date of writtenDates) {
+        const month = date.slice(0, 7);
+        if (isHalfDay) {
+          transaction.mergeAttendanceDay({
+            id: attendanceId(month, request.empId), empId: request.empId, month, date,
+            fields: { halfLeave: {
+              session: request.session,
+              paid: leaveType.paid,
+              leaveTypeId: leaveType.id,
+              leaveRequestId: input.id,
+            } },
+          });
+        } else {
+          transaction.setAttendanceDay({
+            id: attendanceId(month, request.empId), empId: request.empId, month, date,
+            day: {
+              status: leaveType.paid ? 'L' : 'UL',
+              source: 'leave', leaveRequestId: input.id, leaveTypeId: leaveType.id,
+              editedBy: input.caller.uid, editedAt: timestamp,
+            },
+          });
+        }
+      }
+      const writtenDays = writtenDates.length * weight;
       transaction.updateLeaveRequest(input.id, {
         status: 'approved',
-        leaveType: input.leaveType,
-        writtenDates: classification.toWrite,
-        skippedDates: classification.skipped,
+        paid: leaveType.paid,
+        writtenDates,
+        skippedDates,
+        writtenDays,
         decidedBy: input.caller.uid,
         decidedAt: timestamp,
         decisionNote: input.note,
@@ -315,13 +372,15 @@ export class LeaveService {
         requestId: input.id,
         empId: request.empId,
         decision: 'approved',
-        leaveType: input.leaveType,
-        writtenDates: classification.toWrite,
-        skippedDates: classification.skipped,
+        leaveTypeId: leaveType.id,
+        session: request.session ?? 'full',
+        writtenDays,
+        writtenDates,
+        skippedDates,
         by: input.caller.uid,
         at: timestamp,
       });
-      return classification.toWrite.length === 0;
+      return writtenDays === 0;
     });
 
     const request = toLeaveRequestDto(await this.requirePersistedRequest(input.id));
@@ -417,6 +476,7 @@ export function toLeaveRequestDto(request: LeaveRequestRecord): LeaveDto {
   if (request.status === 'approved') {
     dto.writtenDates = request.writtenDates ?? [];
     dto.skippedDates = request.skippedDates ?? [];
+    dto.writtenDays = typeof request.writtenDays === 'number' ? request.writtenDays : 0;
   }
   return dto;
 }
