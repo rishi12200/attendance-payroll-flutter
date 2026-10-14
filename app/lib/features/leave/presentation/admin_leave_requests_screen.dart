@@ -32,7 +32,7 @@ class _AdminLeaveRequestsScreenState
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _LeaveDecisionSheet(request: request),
+      builder: (_) => AdminLeaveDecisionSheet(request: request),
     );
     if (changed == true && mounted) await _refresh();
   }
@@ -162,15 +162,26 @@ class _AdminStatus extends StatelessWidget {
   }
 }
 
-class _LeaveDecisionSheet extends ConsumerStatefulWidget {
-  const _LeaveDecisionSheet({required this.request});
+Future<bool?> showAdminLeaveDecisionSheet(
+  BuildContext context,
+  LeaveRequest request,
+) => showModalBottomSheet<bool>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => AdminLeaveDecisionSheet(request: request),
+);
+
+class AdminLeaveDecisionSheet extends ConsumerStatefulWidget {
+  const AdminLeaveDecisionSheet({required this.request, super.key});
   final LeaveRequest request;
   @override
-  ConsumerState<_LeaveDecisionSheet> createState() =>
-      _LeaveDecisionSheetState();
+  ConsumerState<AdminLeaveDecisionSheet> createState() =>
+      _AdminLeaveDecisionSheetState();
 }
 
-class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
+class _AdminLeaveDecisionSheetState
+    extends ConsumerState<AdminLeaveDecisionSheet> {
   final _note = TextEditingController();
   bool _submitting = false;
 

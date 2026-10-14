@@ -160,10 +160,10 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 92),
                       itemCount: items.length,
-                      itemBuilder: (context, index) => _LeaveCard(
+                      itemBuilder: (context, index) => LeaveRequestCard(
                         request: items[index],
                         onCancel: () => _cancel(items[index]),
-                        onTap: () => _showLeaveDetails(context, items[index]),
+                        onTap: () => showLeaveDetails(context, items[index]),
                       ),
                     ),
             ),
@@ -174,15 +174,18 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
   }
 }
 
-class _LeaveCard extends StatelessWidget {
-  const _LeaveCard({
+class LeaveRequestCard extends StatelessWidget {
+  const LeaveRequestCard({
     required this.request,
     required this.onCancel,
     required this.onTap,
+    this.showCancel = true,
+    super.key,
   });
   final LeaveRequest request;
   final VoidCallback onCancel;
   final VoidCallback onTap;
+  final bool showCancel;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -201,7 +204,7 @@ class _LeaveCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                _StatusChip(status: request.status),
+                LeaveStatusChip(status: request.status),
               ],
             ),
             Text(
@@ -231,7 +234,7 @@ class _LeaveCard extends StatelessWidget {
                 request.status != LeaveStatus.rejected &&
                 (request.decisionNote ?? '').isNotEmpty)
               Text('Admin note: ${request.decisionNote}'),
-            if (request.status == LeaveStatus.pending)
+            if (showCancel && request.status == LeaveStatus.pending)
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
@@ -247,8 +250,8 @@ class _LeaveCard extends StatelessWidget {
   );
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
+class LeaveStatusChip extends StatelessWidget {
+  const LeaveStatusChip({required this.status, super.key});
   final LeaveStatus status;
   @override
   Widget build(BuildContext context) {
@@ -263,7 +266,7 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-void _showLeaveDetails(
+void showLeaveDetails(
   BuildContext context,
   LeaveRequest request,
 ) => showModalBottomSheet<void>(
@@ -287,6 +290,10 @@ void _showLeaveDetails(
           ),
           if (request.paid != null) Text(paidLabel(request.paid!)),
           Text('Status: ${request.status.name}'),
+          if (request.decidedAt != null)
+            Text('Decision date: ${request.decidedAt!.split('T').first}'),
+          if ((request.decisionNote ?? '').isNotEmpty)
+            Text('Admin note: ${request.decisionNote}'),
           if (request.writtenDates.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
@@ -405,7 +412,7 @@ class _BalancePaneState extends ConsumerState<_BalancePane> {
                   padding: EdgeInsets.symmetric(vertical: 48),
                   child: Center(child: Text('No leave balances to show.')),
                 ),
-              for (final item in value.types) _BalanceCard(item: item),
+              for (final item in value.types) LeaveBalanceCard(item: item),
             ],
           ),
         );
@@ -414,8 +421,8 @@ class _BalancePaneState extends ConsumerState<_BalancePane> {
   }
 }
 
-class _BalanceCard extends StatelessWidget {
-  const _BalanceCard({required this.item});
+class LeaveBalanceCard extends StatelessWidget {
+  const LeaveBalanceCard({required this.item, super.key});
   final BalanceType item;
   @override
   Widget build(BuildContext context) => Card(

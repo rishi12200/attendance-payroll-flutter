@@ -272,6 +272,7 @@ class AttendanceHoliday {
     required this.id,
     required this.date,
     required this.name,
+    this.weekday,
     this.scope = 'all',
     this.branchIds = const [],
     this.branchNames = const [],
@@ -282,6 +283,7 @@ class AttendanceHoliday {
   final String id;
   final String date;
   final String name;
+  final String? weekday;
   final String scope;
   final List<String> branchIds;
   final List<String> branchNames;
@@ -302,6 +304,7 @@ class AttendanceHoliday {
       id: json['id'] is String ? json['id'] as String : date,
       date: date,
       name: _requiredString(json, 'name'),
+      weekday: _optionalHolidayString(json['weekday']),
       scope: scope,
       branchIds: _optionalStringList(json['branchIds']),
       branchNames: _optionalStringList(json['branchNames']),

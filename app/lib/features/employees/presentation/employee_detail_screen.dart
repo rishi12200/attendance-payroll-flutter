@@ -11,6 +11,7 @@ import '../domain/employee.dart';
 import '../domain/employee_dates.dart';
 import '../domain/money.dart';
 import '../domain/salary_revision.dart';
+import '../../leave/presentation/employee_leave_section.dart';
 
 class EmployeeDetailScreen extends ConsumerWidget {
   const EmployeeDetailScreen({required this.id, super.key});
@@ -43,8 +44,52 @@ class EmployeeDetailScreen extends ConsumerWidget {
   }
 }
 
-class _EmployeeDetails extends ConsumerWidget {
+class _EmployeeDetails extends StatefulWidget {
   const _EmployeeDetails({required this.employee, required this.isSelf});
+
+  final Employee employee;
+  final bool isSelf;
+
+  @override
+  State<_EmployeeDetails> createState() => _EmployeeDetailsState();
+}
+
+class _EmployeeDetailsState extends State<_EmployeeDetails> {
+  int _section = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final employee = widget.employee;
+    return Column(
+      children: [
+        if (employee.role != 'admin')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, label: Text('Details')),
+                ButtonSegment(value: 1, label: Text('Leave')),
+              ],
+              selected: {_section},
+              onSelectionChanged: (selection) =>
+                  setState(() => _section = selection.first),
+            ),
+          ),
+        Expanded(
+          child: employee.role != 'admin' && _section == 1
+              ? EmployeeLeaveSection(employee: employee)
+              : _EmployeeDetailsContent(
+                  employee: employee,
+                  isSelf: widget.isSelf,
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EmployeeDetailsContent extends ConsumerWidget {
+  const _EmployeeDetailsContent({required this.employee, required this.isSelf});
 
   final Employee employee;
   final bool isSelf;
@@ -309,8 +354,8 @@ class _EmployeeBranchNames extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final branches = ref.watch(branchesProvider('active')).asData?.value ??
-        const <Branch>[];
+    final branches =
+        ref.watch(branchesProvider('active')).asData?.value ?? const <Branch>[];
     String nameFor(String? id) {
       if (id == null) return 'None';
       for (final branch in branches) {
