@@ -58,12 +58,12 @@ function makeApp() {
       requestRecord.status = 'cancelled';
       return { ...requestRecord };
     },
-    decide: async ({ id, decision, leaveType }) => {
-      calls.push(`decision:${id}:${decision}:${leaveType ?? ''}`);
+    decide: async ({ id, decision }) => {
+      calls.push(`decision:${id}:${decision}`);
       Object.assign(requestRecord, {
         status: decision, decidedBy: 'admin-1', decidedAt: Timestamp.fromDate(new Date('2026-10-08T10:00:00Z')),
         decisionNote: null,
-        ...(decision === 'approved' ? { leaveType, writtenDates: ['2026-10-10', '2026-10-11'], skippedDates: [] } : {}),
+        ...(decision === 'approved' ? { leaveTypeId: 'annual', writtenDates: ['2026-10-10', '2026-10-11'], skippedDates: [] } : {}),
       });
       return { ...requestRecord };
     },
@@ -104,7 +104,7 @@ test('leave routes enforce bearer authentication and endpoint roles', async () =
   assert.equal((await request(app, '/leaves/leave-1/cancel', { method: 'POST', headers: employeeHeaders })).status, 200);
   assert.equal((await request(app, '/leaves?status=all&empId=emp-1', { headers })).status, 200);
   assert.equal((await request(app, '/leaves/leave-1/decision', {
-    method: 'POST', headers, body: JSON.stringify({ decision: 'approved', leaveType: 'paid' }),
+    method: 'POST', headers, body: JSON.stringify({ decision: 'approved' }),
   })).status, 200);
 });
 
@@ -116,15 +116,19 @@ test('leave routes validate each request part and serialize returned timestamps'
     ['/leaves/me?status=unknown', { headers: employeeHeaders }],
     ['/leaves?status=unknown', { headers }],
     ['/leaves?extra=x', { headers }],
-    ['/leaves/leave-1/decision', { method: 'POST', headers, body: JSON.stringify({ decision: 'approved' }) }],
+    ['/leaves/leave-1/decision', { method: 'POST', headers, body: JSON.stringify({ decision: 'approved', leaveType: 'paid' }) }],
     ['/leaves/leave-1/decision', { method: 'POST', headers, body: JSON.stringify({ decision: 'rejected', leaveType: 'paid' }) }],
-    ['/leaves/leave-1/decision', { method: 'POST', headers, body: JSON.stringify({ decision: 'approved', leaveType: 'paid', unknown: true }) }],
+    ['/leaves/leave-1/decision', { method: 'POST', headers, body: JSON.stringify({ decision: 'approved', unknown: true }) }],
   ];
   for (const [path, options] of invalid) {
     const result = await request(app, path, options);
     assert.equal(result.status, 400, path);
     assert.equal(result.body.error.code, 'VALIDATION_ERROR');
   }
+  const removedField = await request(app, '/leaves/leave-1/decision', {
+    method: 'POST', headers, body: JSON.stringify({ decision: 'approved', leaveType: 'paid' }),
+  });
+  assert.equal(removedField.body.error.message, "leaveType is no longer accepted; the request's leave type decides.");
 
   const created = await request(app, '/leaves', {
     method: 'POST', headers: employeeHeaders,
@@ -152,7 +156,7 @@ test('leave routes validate each request part and serialize returned timestamps'
   assert.deepEqual(cancelled.body, cancelledGet.body);
 
   const decided = await request(app, '/leaves/leave-1/decision', {
-    method: 'POST', headers, body: JSON.stringify({ decision: 'approved', leaveType: 'paid' }),
+    method: 'POST', headers, body: JSON.stringify({ decision: 'approved' }),
   });
   const decidedGet = await request(app, '/leaves/leave-1', { headers });
   assert.equal(decided.body.fromDate, '2026-10-10');
@@ -160,6 +164,6 @@ test('leave routes validate each request part and serialize returned timestamps'
   assert.deepEqual(decided.body, decidedGet.body);
   assert.deepEqual(calls, [
     'apply:emp-1:personal', 'get:leave-1', 'mine:', 'list:all:',
-    'cancel:leave-1', 'get:leave-1', 'decision:leave-1:approved:paid', 'get:leave-1',
+    'cancel:leave-1', 'get:leave-1', 'decision:leave-1:approved', 'get:leave-1',
   ]);
 });

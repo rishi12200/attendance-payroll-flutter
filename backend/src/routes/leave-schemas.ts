@@ -28,14 +28,5 @@ export const leaveListQuerySchema = z.strictObject({
 export const leaveDecisionBodySchema = z
   .strictObject({
     decision: z.enum(['approved', 'rejected']),
-    leaveType: z.enum(['paid', 'unpaid']).optional(),
     note: z.string().trim().max(200).optional(),
-  })
-  .refine(
-    ({ decision, leaveType }) => decision === 'rejected' || leaveType !== undefined,
-    { message: 'leaveType is required when approving a leave request.', path: ['leaveType'] },
-  )
-  .refine(
-    ({ decision, leaveType }) => decision === 'approved' || leaveType === undefined,
-    { message: 'leaveType is only allowed when approving a leave request.', path: ['leaveType'] },
-  );
+  });

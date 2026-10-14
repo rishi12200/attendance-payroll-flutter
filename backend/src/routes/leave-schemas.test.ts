@@ -38,15 +38,15 @@ test('leave status queries and IDs are validated strictly', () => {
   assert.equal(leaveParamsSchema.safeParse({ id: '  ' }).success, false);
 });
 
-test('decision requires leave type only for approvals and limits notes to 200 chars', () => {
+test('decision accepts only the decision and optional note', () => {
   assert.deepEqual(leaveDecisionBodySchema.parse({
-    decision: 'approved', leaveType: 'paid', note: '  ok  ',
-  }), { decision: 'approved', leaveType: 'paid', note: 'ok' });
+    decision: 'approved', note: '  ok  ',
+  }), { decision: 'approved', note: 'ok' });
   assert.deepEqual(leaveDecisionBodySchema.parse({ decision: 'rejected' }), {
     decision: 'rejected',
   });
-  assert.equal(leaveDecisionBodySchema.safeParse({ decision: 'approved' }).success, false);
+  assert.equal(leaveDecisionBodySchema.safeParse({ decision: 'approved', leaveType: 'paid' }).success, false);
   assert.equal(leaveDecisionBodySchema.safeParse({ decision: 'rejected', leaveType: 'paid' }).success, false);
-  assert.equal(leaveDecisionBodySchema.safeParse({ decision: 'approved', leaveType: 'paid', note: 'x'.repeat(201) }).success, false);
-  assert.equal(leaveDecisionBodySchema.safeParse({ decision: 'approved', leaveType: 'paid', surprise: true }).success, false);
+  assert.equal(leaveDecisionBodySchema.safeParse({ decision: 'approved', note: 'x'.repeat(201) }).success, false);
+  assert.equal(leaveDecisionBodySchema.safeParse({ decision: 'approved', surprise: true }).success, false);
 });

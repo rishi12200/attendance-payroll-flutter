@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { IdTokenVerifier } from '../middleware/auth';
 import { createAuthMiddleware, requireRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
+import { AppError } from '../errors/app-error';
 import { serialize } from '../services/serialize';
 import {
   leaveApplyBodySchema,
@@ -27,7 +28,6 @@ export interface LeaveOperations {
     caller: { uid: string; role: string };
     id: string;
     decision: 'approved' | 'rejected';
-    leaveType?: 'paid' | 'unpaid';
     note?: string;
   }): Promise<unknown>;
 }
@@ -41,6 +41,12 @@ export function createLeavesRouter(dependencies: {
   const admin = requireRole('admin');
   const employee = requireRole('employee');
   const signedIn = requireRole('admin', 'employee');
+  const rejectDecisionLeaveType = (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
+    if (typeof req.body === 'object' && req.body !== null && 'leaveType' in req.body) {
+      return next(new AppError(400, 'VALIDATION_ERROR', "leaveType is no longer accepted; the request's leave type decides."));
+    }
+    return next();
+  };
 
   router.post(
     '/',
@@ -135,6 +141,7 @@ export function createLeavesRouter(dependencies: {
     authenticate,
     admin,
     validate(leaveParamsSchema, 'params'),
+      rejectDecisionLeaveType,
     validate(leaveDecisionBodySchema),
     async (req, res) => {
       const { id } = res.locals.validatedParts.params;
