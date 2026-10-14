@@ -14,12 +14,15 @@ import { SettingsService } from './services/settings-service';
 import { HolidayService } from './services/holiday-service';
 import { LeaveService } from './services/leave-service';
 import { FirestoreLeaveStore } from './services/firestore-leave-store';
+import { LeaveTypeService } from './services/leave-type-service';
+import { FirestoreLeaveTypeStore } from './services/firestore-leave-type-store';
 
 const employeeStore = new FirestoreEmployeeStore(db);
 const branchStore = new FirestoreBranchStore(db);
 const attendanceStore = new FirestoreAttendanceStore(db);
 const attendanceViewsStore = new FirestoreAttendanceViewsStore(db);
 const leaveStore = new FirestoreLeaveStore(db);
+const leaveTypeStore = new FirestoreLeaveTypeStore(db);
 const app = createApp({
   verifyIdToken: (token, checkRevoked) => auth.verifyIdToken(token, checkRevoked),
   getProfile: getUserProfile,
@@ -42,6 +45,7 @@ const app = createApp({
   settings: new SettingsService(attendanceViewsStore),
   holidays: new HolidayService(attendanceViewsStore),
   leaves: new LeaveService(leaveStore),
+  leaveTypes: new LeaveTypeService(leaveTypeStore),
 });
 
 app.listen(env.PORT, () => {

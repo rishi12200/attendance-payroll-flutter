@@ -15,6 +15,7 @@ import {
 } from './routes/attendance-views';
 import { createCheckinsRouter } from './routes/checkins';
 import { createLeavesRouter, type LeaveOperations } from './routes/leaves';
+import { createLeaveTypesRouter, type LeaveTypeOperations } from './routes/leave-types';
 
 export function createApp(
   dependencies: MeRouteDependencies & {
@@ -25,6 +26,7 @@ export function createApp(
     settings?: SettingsOperations;
     holidays?: HolidayOperations;
     leaves?: LeaveOperations;
+    leaveTypes?: LeaveTypeOperations;
   },
 ) {
   const app = express();
@@ -103,6 +105,12 @@ export function createApp(
         leaves: dependencies.leaves,
       }),
     );
+  }
+  if (dependencies.leaveTypes) {
+    app.use('/leave-types', createLeaveTypesRouter({
+      verifyIdToken: dependencies.verifyIdToken,
+      leaveTypes: dependencies.leaveTypes,
+    }));
   }
 
   app.use((_req, _res, next) => {
