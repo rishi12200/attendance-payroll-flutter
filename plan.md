@@ -489,10 +489,10 @@ Backend:
 - [x] Domain tests for every row of the half-day table, quota edges, leave-year boundaries, a request spanning two leave years
 
 Flutter:
-- [ ] Apply screen: type picker with remaining balance, session choice, quota error message
-- [ ] Leave tab: Balance section (data cards per type)
-- [ ] Admin Settings: Leave types screen. Decision sheet shows the type, session and balance, without a paid or unpaid choice.
-- [ ] Calendars show half-day leave with session and type
+- [x] Apply screen: type picker with remaining balance, session choice, quota error message
+- [x] Leave tab: Balance section (data cards per type)
+- [x] Admin Settings: Leave types screen. Decision sheet shows the type, session and balance, without a paid or unpaid choice.
+- [x] Calendars show half-day leave with session and type
 - [ ] **Done when:** an employee applies for Sick Leave and sees the balance drop, a half-day request shows 0.5 on the balance and in the calendar, an over-quota request is blocked, paid types add no LOP and unpaid types do, and an admin can add a new leave type that employees immediately see
 
 ### Step 7: Payroll
