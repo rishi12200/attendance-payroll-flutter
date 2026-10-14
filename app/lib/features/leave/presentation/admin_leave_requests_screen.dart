@@ -5,6 +5,7 @@ import '../../../core/api/app_exception.dart';
 import '../data/leave_providers.dart';
 import '../domain/leave_helpers.dart';
 import '../domain/leave_request.dart';
+import '../domain/leave_type.dart';
 
 class AdminLeaveRequestsScreen extends ConsumerStatefulWidget {
   const AdminLeaveRequestsScreen({super.key});
@@ -133,7 +134,7 @@ class _AdminLeaveCard extends StatelessWidget {
             '${request.empCode ?? ''} · ${readableLeaveRange(request.fromDate, request.toDate)}',
           ),
           Text(
-            '${leaveDayCount(request.fromDate, request.toDate)} days · ${request.reason}',
+            '${leaveTypeDisplayName(name: request.leaveTypeName, id: request.leaveTypeId)} · ${sessionLabel(request.session)} · ${pluralDays(request.requestedDays ?? leaveDayCount(request.fromDate, request.toDate).toDouble())} · ${request.reason}',
           ),
         ],
       ),
@@ -170,7 +171,6 @@ class _LeaveDecisionSheet extends ConsumerStatefulWidget {
 }
 
 class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
-  LeaveType? _type;
   final _note = TextEditingController();
   bool _submitting = false;
 
@@ -181,8 +181,6 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
   }
 
   Future<void> _decide(String decision) async {
-    final type = _type;
-    if (decision == 'approved' && type == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -191,7 +189,7 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
         ),
         content: Text(
           decision == 'approved'
-              ? 'Approve as ${type!.name}?'
+              ? 'Approve this leave request?'
               : 'Reject this leave request?',
         ),
         actions: [
@@ -214,7 +212,6 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
           .decide(
             id: widget.request.id,
             decision: decision,
-            leaveType: decision == 'approved' ? type!.name : null,
             note: _note.text.trim().isEmpty ? null : _note.text.trim(),
           );
       ref.invalidate(
@@ -239,7 +236,9 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 if (decision == 'approved')
-                  Text('${result.writtenDates.length} days written.'),
+                  Text(
+                    '${pluralDays(result.writtenDays ?? result.writtenDates.length.toDouble())} written.',
+                  ),
                 if (result.writtenDates.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   const Text('Days written'),
@@ -270,8 +269,10 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
       if (!mounted) return;
       final message = switch (error.code) {
         'ALREADY_DECIDED' => 'Someone already decided this request.',
+        'LEAVE_TYPE_MISSING' => 'This request has no leave type. Reject it or ask the employee to apply again.',
         'MONTH_LOCKED' =>
           'This month is locked, so the leave could not be approved.',
+        'QUOTA_EXCEEDED' => _quotaApprovalMessage(error, widget.request),
         _ => error.message,
       };
       ScaffoldMessenger.of(context)
@@ -296,6 +297,19 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
   Widget build(BuildContext context) {
     final request = widget.request;
     final pending = request.status == LeaveStatus.pending;
+    final balance = ref.watch(
+      leaveBalanceProvider((year: null, empId: request.empId)),
+    );
+    final balanceForDate = balance.asData?.value;
+    final dateInBalanceYear =
+        balanceForDate != null &&
+        request.fromDate.compareTo(balanceForDate.startDate) >= 0 &&
+        request.fromDate.compareTo(balanceForDate.endDate) <= 0;
+    final balanceType = dateInBalanceYear
+        ? balanceForDate.types
+              .where((item) => item.leaveTypeId == request.leaveTypeId)
+              .firstOrNull
+        : null;
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -315,14 +329,40 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
               '${request.empCode ?? ''} · ${readableLeaveRange(request.fromDate, request.toDate)}',
             ),
             Text('Status: ${request.status.name}'),
-            Text('${leaveDayCount(request.fromDate, request.toDate)} days'),
+            Text(
+              pluralDays(
+                request.requestedDays ??
+                    leaveDayCount(request.fromDate, request.toDate).toDouble(),
+              ),
+            ),
             const SizedBox(height: 10),
             Text(request.reason),
+            Text(
+              '${leaveTypeDisplayName(name: request.leaveTypeName, id: request.leaveTypeId)} · ${sessionLabel(request.session)}',
+            ),
+            if (request.paid != null)
+              Chip(label: Text(paidLabel(request.paid!))),
+            if (pending && request.leaveTypeId == null)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text(
+                    'This request was made before leave types existed. Reject it, or ask the employee to apply again.',
+                  ),
+                ),
+              ),
+            if (pending && request.leaveTypeId != null) ...[
+              if (dateInBalanceYear && balanceType != null)
+                Text(
+                  'Balance for ${balanceForDate.label}: ${balanceType.remaining == null ? 'No limit' : '${pluralDays(balanceType.remaining!)} left'}',
+                )
+              else if (balance.hasValue || balance.hasError)
+                const Text("The balance for that leave year isn't shown."),
+            ],
             if (request.status == LeaveStatus.approved) ...[
               const SizedBox(height: 12),
-              Text('${request.leaveType?.name ?? ''} leave'),
               Text(
-                '${request.writtenDates.length} days applied, ${request.skippedDates.length} skipped',
+                '${pluralDays(request.writtenDays ?? request.writtenDates.length.toDouble())} applied, ${request.skippedDates.length} skipped',
               ),
             ],
             if ((request.decisionNote ?? '').isNotEmpty)
@@ -342,25 +382,6 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
             ],
             if (pending) ...[
               const SizedBox(height: 18),
-              const Text('Approval type'),
-              RadioGroup<LeaveType>(
-                groupValue: _type,
-                onChanged: (value) => setState(() => _type = value),
-                child: const Column(
-                  children: [
-                    RadioListTile<LeaveType>(
-                      value: LeaveType.paid,
-                      title: Text('Paid'),
-                      subtitle: Text('Paid: no salary deduction'),
-                    ),
-                    RadioListTile<LeaveType>(
-                      value: LeaveType.unpaid,
-                      title: Text('Unpaid'),
-                      subtitle: Text('Unpaid: salary is deducted for each day'),
-                    ),
-                  ],
-                ),
-              ),
               TextField(
                 controller: _note,
                 maxLength: 200,
@@ -368,7 +389,7 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
               ),
               const SizedBox(height: 8),
               FilledButton(
-                onPressed: !_submitting && _type != null
+                onPressed: !_submitting && request.leaveTypeId != null
                     ? () => _decide('approved')
                     : null,
                 child: _submitting
@@ -385,6 +406,17 @@ class _LeaveDecisionSheetState extends ConsumerState<_LeaveDecisionSheet> {
       ),
     );
   }
+}
+
+String _quotaApprovalMessage(AppException error, LeaveRequest request) {
+  final details = error.details;
+  final name = details['leaveTypeName'] ?? request.leaveTypeName;
+  final year = details['yearLabel'];
+  final remaining = details['remaining'];
+  if (name is String && year is String && remaining is num) {
+    return 'Approving would exceed $name for $year. Remaining: ${pluralDays(remaining.toDouble())}.';
+  }
+  return error.message;
 }
 
 class _AdminError extends StatelessWidget {
