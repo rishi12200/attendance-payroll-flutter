@@ -6,6 +6,7 @@ import { AppError } from '../errors/app-error';
 import { serialize } from '../services/serialize';
 import {
   leaveApplyBodySchema,
+  leaveBalanceQuerySchema,
   leaveDecisionBodySchema,
   leaveListQuerySchema,
   leaveMeQuerySchema,
@@ -24,6 +25,7 @@ export interface LeaveOperations {
   ): Promise<unknown>;
   getById(caller: { uid: string; role: string }, id: string): Promise<unknown>;
   cancel(caller: { uid: string; role: string }, id: string): Promise<unknown>;
+  getBalance(caller: { uid: string; role: string }, input: { year?: number; empId?: string }): Promise<unknown>;
   decide(input: {
     caller: { uid: string; role: string };
     id: string;
@@ -80,6 +82,19 @@ export function createLeavesRouter(dependencies: {
           ),
         ),
       );
+    },
+  );
+
+  router.get(
+    '/balance',
+    authenticate,
+    signedIn,
+    validate(leaveBalanceQuerySchema, 'query'),
+    async (req, res) => {
+      res.json(serialize(await dependencies.leaves.getBalance(
+        { uid: req.user!.uid, role: req.user!.role },
+        res.locals.validatedParts.query,
+      )));
     },
   );
 

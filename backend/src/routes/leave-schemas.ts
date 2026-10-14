@@ -8,6 +8,11 @@ export const leaveParamsSchema = z.strictObject({
   id: z.string().trim().min(1),
 });
 
+export const leaveBalanceQuerySchema = z.strictObject({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  empId: z.string().trim().min(1).optional(),
+});
+
 export const leaveApplyBodySchema = z.strictObject({
   leaveTypeId: z.string().trim().min(1),
   fromDate: date,

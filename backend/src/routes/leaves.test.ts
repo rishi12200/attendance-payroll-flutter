@@ -58,6 +58,10 @@ function makeApp() {
       requestRecord.status = 'cancelled';
       return { ...requestRecord };
     },
+    getBalance: async (caller, input) => {
+      calls.push(`balance:${caller.role}:${input.empId ?? ''}:${input.year ?? ''}`);
+      return { year: input.year ?? 2026, types: [] };
+    },
     decide: async ({ id, decision }) => {
       calls.push(`decision:${id}:${decision}`);
       Object.assign(requestRecord, {
@@ -166,4 +170,16 @@ test('leave routes validate each request part and serialize returned timestamps'
     'apply:emp-1:personal', 'get:leave-1', 'mine:', 'list:all:',
     'cancel:leave-1', 'get:leave-1', 'decision:leave-1:approved', 'get:leave-1',
   ]);
+});
+
+test('balance route requires a signed-in role and validates query parameters', async () => {
+  const { app, calls } = makeApp();
+  assert.equal((await request(app, '/leaves/balance')).status, 401);
+  assert.equal((await request(app, '/leaves/balance?year=1999', { headers: employeeHeaders })).status, 400);
+  const employee = await request(app, '/leaves/balance?year=2025', { headers: employeeHeaders });
+  assert.equal(employee.status, 200);
+  assert.equal(employee.body.year, 2025);
+  const admin = await request(app, '/leaves/balance?empId=emp-1&year=2025', { headers });
+  assert.equal(admin.status, 200);
+  assert.deepEqual(calls, ['balance:employee::2025', 'balance:admin:emp-1:2025']);
 });
