@@ -149,6 +149,8 @@ void main() {
       '/admin/attendance/employee/employee-1?month=2026-10',
       '/admin/holidays',
       '/admin/settings',
+      '/admin/settings/leave-types',
+      '/admin/settings/leave-types/new',
       '/admin/flagged-checkins',
       '/admin/leaves',
     ]) {
@@ -186,6 +188,19 @@ void main() {
       ),
       isNull,
     );
+    for (final employeeRoute in ['/employee/leave', '/employee/leave/apply']) {
+      expect(
+        routerRedirect(
+          location: employeeRoute,
+          authLoading: false,
+          isSignedIn: true,
+          profileLoading: false,
+          profileError: false,
+          profile: admin,
+        ),
+        '/admin/dashboard',
+      );
+    }
     for (final employeeRoute in ['/employee/leave', '/employee/leave/apply']) {
       expect(
         routerRedirect(

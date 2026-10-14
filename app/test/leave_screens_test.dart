@@ -7,8 +7,11 @@ import 'package:app/features/attendance/domain/attendance_views.dart';
 import 'package:app/features/leave/data/leave_providers.dart';
 import 'package:app/features/leave/data/leave_repository.dart';
 import 'package:app/features/leave/domain/leave_form_validation.dart';
+import 'package:app/features/leave/domain/leave_helpers.dart';
 import 'package:app/features/leave/domain/leave_request.dart';
+import 'package:app/features/leave/domain/leave_type.dart';
 import 'package:app/features/leave/presentation/admin_leave_requests_screen.dart';
+import 'package:app/features/leave/presentation/admin_leave_types_screen.dart';
 import 'package:app/features/leave/presentation/apply_leave_screen.dart';
 import 'package:app/features/leave/presentation/my_leave_requests_screen.dart';
 import 'package:app/features/leave/presentation/pending_leave_badge.dart';
@@ -46,17 +49,51 @@ class _FakeLeaveRepository implements LeaveRepository {
   AppException? decisionError;
   AppException? mineError;
   AppException? adminError;
+  AppException? typeError;
+  AppException? typeWriteError;
+  AppException? balanceError;
+  List<LeaveType> availableTypes = const [
+    LeaveType(
+      id: 'sick',
+      name: 'Sick Leave',
+      code: 'SL',
+      paid: true,
+      annualQuotaDays: 8,
+      allowHalfDay: true,
+    ),
+    LeaveType(
+      id: 'casual',
+      name: 'Casual Leave',
+      code: 'CL',
+      paid: true,
+      annualQuotaDays: 8,
+      allowHalfDay: true,
+    ),
+    LeaveType(
+      id: 'unpaid',
+      name: 'Unpaid Leave',
+      code: 'UL',
+      paid: false,
+      annualQuotaDays: null,
+      allowHalfDay: true,
+      system: true,
+    ),
+  ];
   LeaveRequest? decisionResult;
   Completer<List<LeaveRequest>>? mineCompleter;
   Completer<List<LeaveRequest>>? adminCompleter;
-  String? lastLeaveType;
+  String? lastAppliedType;
+  String? lastSession;
   String? lastNote;
+  Map<String, Object?>? createdType;
 
   @override
   Future<LeaveRequest> apply({
+    required String leaveTypeId,
     required String fromDate,
     required String toDate,
     required String reason,
+    String session = 'full',
   }) async {
     applyCalls++;
     if (applyError != null) throw applyError!;
@@ -64,7 +101,11 @@ class _FakeLeaveRepository implements LeaveRepository {
       fromDate: fromDate,
       toDate: toDate,
       reason: reason,
+      leaveTypeId: leaveTypeId,
+      session: session,
     );
+    lastAppliedType = leaveTypeId;
+    lastSession = session;
     requests.insert(0, created);
     return created;
   }
@@ -106,11 +147,9 @@ class _FakeLeaveRepository implements LeaveRepository {
   Future<LeaveRequest> decide({
     required String id,
     required String decision,
-    String? leaveType,
     String? note,
   }) async {
     decideCalls++;
-    lastLeaveType = leaveType;
     lastNote = note;
     if (decisionError != null) throw decisionError!;
     final result =
@@ -119,16 +158,73 @@ class _FakeLeaveRepository implements LeaveRepository {
           status: decision == 'approved'
               ? LeaveStatus.approved
               : LeaveStatus.rejected,
-          leaveType: leaveType == 'unpaid'
-              ? LeaveType.unpaid
-              : leaveType == null
-              ? null
-              : LeaveType.paid,
           note: note,
         );
     final index = requests.indexWhere((item) => item.id == id);
     if (index >= 0) requests[index] = result;
     return result;
+  }
+
+  @override
+  Future<List<LeaveType>> listLeaveTypes({String status = 'all'}) async {
+    if (typeError != null) throw typeError!;
+    return availableTypes
+        .where((item) => status == 'all' || item.status == status)
+        .toList();
+  }
+
+  @override
+  Future<LeaveBalance> getBalance({int? year, String? empId}) async {
+    if (balanceError != null) throw balanceError!;
+    final selectedYear = year ?? 2026;
+    return LeaveBalance(
+      year: selectedYear,
+      label: '$selectedYear',
+      startDate: '$selectedYear-01-01',
+      endDate: '$selectedYear-12-31',
+      today: '2026-10-12',
+      types: const [
+        BalanceType(
+          leaveTypeId: 'sick',
+          name: 'Sick Leave',
+          code: 'SL',
+          paid: true,
+          allowHalfDay: true,
+          quota: 8,
+          used: 1,
+          pending: 0.5,
+          remaining: 6.5,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<LeaveType> createLeaveType(Map<String, Object?> values) async {
+    if (typeWriteError != null) throw typeWriteError!;
+    createdType = Map.of(values);
+    return availableTypes.first;
+  }
+
+  @override
+  Future<LeaveType> updateLeaveType(
+    String id,
+    Map<String, Object?> changes,
+  ) async {
+    if (typeWriteError != null) throw typeWriteError!;
+    return listLeaveTypes().then((v) => v.first);
+  }
+
+  @override
+  Future<LeaveType> deactivateLeaveType(String id) async {
+    if (typeWriteError != null) throw typeWriteError!;
+    return listLeaveTypes().then((v) => v.first);
+  }
+
+  @override
+  Future<LeaveType> reactivateLeaveType(String id) async {
+    if (typeWriteError != null) throw typeWriteError!;
+    return listLeaveTypes().then((v) => v.first);
   }
 }
 
@@ -138,7 +234,12 @@ LeaveRequest _request({
   String toDate = '2026-10-13',
   String reason = 'Family event',
   LeaveStatus status = LeaveStatus.pending,
-  LeaveType? leaveType,
+  String? leaveTypeId = 'sick',
+  String? leaveTypeName = 'Sick Leave',
+  bool? paid = true,
+  String session = 'full',
+  double? requestedDays,
+  double? writtenDays,
   String? note,
   List<String> written = const [],
   List<SkippedDate> skipped = const [],
@@ -153,7 +254,12 @@ LeaveRequest _request({
   status: status,
   createdAt: '2026-10-12T00:00:00.000Z',
   updatedAt: '2026-10-12T00:00:00.000Z',
-  leaveType: leaveType,
+  leaveTypeId: leaveTypeId,
+  leaveTypeName: leaveTypeName,
+  paid: paid,
+  session: session,
+  requestedDays: requestedDays ?? leaveDayCount(fromDate, toDate).toDouble(),
+  writtenDays: writtenDays,
   decidedBy: status == LeaveStatus.pending ? null : 'admin-1',
   decidedAt: status == LeaveStatus.pending ? null : '2026-10-12T00:00:00.000Z',
   decisionNote: note,
@@ -209,8 +315,13 @@ Widget _routerApp(_FakeLeaveRepository repository) {
 Future<void> _pickTwoLeaveDays(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1000, 1000);
   tester.view.devicePixelRatio = 1;
+  await tester.pump();
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.tap(find.byKey(const ValueKey('leave-type-picker')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.textContaining('Sick Leave').last);
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('leave-date-range-button')));
   await tester.pumpAndSettle();
   await tester.tap(find.text('12').last);
@@ -221,7 +332,281 @@ Future<void> _pickTwoLeaveDays(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _pickSingleLeaveDay(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(1000, 1000);
+  tester.view.devicePixelRatio = 1;
+  await tester.pump();
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.tap(find.byKey(const ValueKey('leave-type-picker')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.textContaining('Sick Leave').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('leave-date-range-button')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('12').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('12').last);
+  await tester.pumpAndSettle();
+  final save = find.text('Save');
+  if (save.evaluate().isNotEmpty) await tester.tap(save);
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets('admin leave type form validates and normalizes new types', (
+    tester,
+  ) async {
+    final repository = _FakeLeaveRepository();
+    final router = GoRouter(
+      initialLocation: '/leave-types/new',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const Scaffold(),
+          routes: [
+            GoRoute(
+              path: 'leave-types/new',
+              builder: (_, _) => const AdminLeaveTypeFormScreen(),
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [leaveRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('leave-type-name')),
+      'Sick',
+    );
+    await tester.enterText(find.byKey(const ValueKey('leave-type-code')), 'sl');
+    await tester.enterText(
+      find.byKey(const ValueKey('leave-type-quota')),
+      '0.3',
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('save-leave-type')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const ValueKey('save-leave-type')));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter 0.5 to 366 in 0.5 day steps.'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('leave-type-quota')));
+    await tester.enterText(
+      find.byKey(const ValueKey('leave-type-quota')),
+      '0.5',
+    );
+    repository.typeWriteError = const AppException(
+      code: 'LEAVE_TYPE_CODE_EXISTS',
+      message: 'Conflict',
+      details: {},
+    );
+    await tester.ensureVisible(find.byKey(const ValueKey('save-leave-type')));
+    await tester.tap(find.byKey(const ValueKey('save-leave-type')));
+    await tester.pumpAndSettle();
+    expect(find.text('This code is already used.'), findsOneWidget);
+    repository.typeWriteError = null;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.ensureVisible(find.byKey(const ValueKey('save-leave-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('save-leave-type')));
+    await tester.pumpAndSettle();
+    expect(repository.createdType?['code'], 'SL');
+    expect(repository.createdType?['annualQuotaDays'], 0.5);
+  });
+
+  testWidgets('admin leave type list filters types and shows system badges', (
+    tester,
+  ) async {
+    final repository = _FakeLeaveRepository()
+      ..availableTypes = [
+        ..._FakeLeaveRepository().availableTypes,
+        const LeaveType(
+          id: 'legacy-paid',
+          name: 'Paid Leave',
+          code: 'PL',
+          paid: true,
+          annualQuotaDays: null,
+          allowHalfDay: false,
+          status: 'inactive',
+          system: true,
+        ),
+      ];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [leaveRepositoryProvider.overrideWithValue(repository)],
+        child: const MaterialApp(home: AdminLeaveTypesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('System'), findsNWidgets(2));
+    expect(find.text('Half days'), findsNWidgets(3));
+    repository.typeWriteError = const AppException(
+      code: 'LEAVE_TYPE_IN_USE',
+      message: 'Conflict',
+      details: {'pendingCount': 2},
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('leave-type-sick')),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Deactivate'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Deactivate'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        '2 pending requests use this type. Decide or cancel them first.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Inactive').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Paid Leave (PL)'), findsOneWidget);
+    expect(find.text('Sick Leave (SL)'), findsNothing);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('leave-type-legacy-paid')),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Reactivate'), findsNothing);
+  });
+
+  testWidgets(
+    'system leave type form locks paid fields and shows legacy notice',
+    (tester) async {
+      const legacy = LeaveType(
+        id: 'legacy-paid',
+        name: 'Paid Leave',
+        code: 'PL',
+        paid: true,
+        annualQuotaDays: null,
+        allowHalfDay: false,
+        status: 'inactive',
+        system: true,
+      );
+      final repository = _FakeLeaveRepository();
+      final router = GoRouter(
+        initialLocation: '/leave-types/edit',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const Scaffold(),
+            routes: [
+              GoRoute(
+                path: 'leave-types/edit',
+                builder: (_, _) => const AdminLeaveTypeFormScreen(type: legacy),
+              ),
+            ],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [leaveRepositoryProvider.overrideWithValue(repository)],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          "This is a system type. Its paid status and quota can't be changed.",
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text("Only used to display old requests. It can't be activated."),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.widgetWithText(SwitchListTile, 'Paid leave'),
+            )
+            .onChanged,
+        isNull,
+      );
+    },
+  );
+
+  testWidgets(
+    'Leave tab balance shows decimal data and clamps year navigation',
+    (tester) async {
+      final repository = _FakeLeaveRepository();
+      await tester.pumpWidget(_app(const MyLeaveRequestsScreen(), repository));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Balance'));
+      await tester.pumpAndSettle();
+      expect(find.text('Used: 1 day'), findsOneWidget);
+      expect(find.text('Pending: 0.5 day'), findsOneWidget);
+      expect(find.text('Remaining: 6.5 days'), findsOneWidget);
+      expect(
+        find.text('Pending requests are reserved from your balance.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('apply-leave-button')), findsNothing);
+      await tester.tap(find.byTooltip('Previous leave year'));
+      await tester.pumpAndSettle();
+      expect(find.text('2025'), findsOneWidget);
+      await tester.tap(find.byTooltip('Previous leave year'));
+      await tester.pumpAndSettle();
+      expect(find.text('2025'), findsOneWidget);
+      await tester.tap(find.byTooltip('Next leave year'));
+      await tester.pumpAndSettle();
+      expect(find.text('2026'), findsOneWidget);
+    },
+  );
+
+  testWidgets('apply type picker shows paid labels and remaining or no limit', (
+    tester,
+  ) async {
+    final repository = _FakeLeaveRepository();
+    await tester.pumpWidget(_app(const ApplyLeaveScreen(), repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('leave-type-picker')));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Sick Leave · SL · Paid · 6.5 days left'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Unpaid Leave · UL · Unpaid · No limit'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('half-day session is available for one date and applies as 0.5', (
+    tester,
+  ) async {
+    final repository = _FakeLeaveRepository();
+    await tester.pumpWidget(_app(const ApplyLeaveScreen(), repository));
+    await tester.pumpAndSettle();
+    await _pickSingleLeaveDay(tester);
+    expect(find.byKey(const ValueKey('leave-session-choice')), findsOneWidget);
+    await tester.tap(find.text('First half'));
+    await tester.pumpAndSettle();
+    expect(find.text('0.5 day selected'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('leave-reason-field')),
+      'Visit',
+    );
+    await tester.tap(find.byKey(const ValueKey('submit-leave-button')));
+    await tester.pumpAndSettle();
+    expect(repository.lastAppliedType, 'sick');
+    expect(repository.lastSession, 'first_half');
+  });
+
   testWidgets(
     'employee leave tab switches sections and hides Apply on Holidays',
     (tester) async {
@@ -419,12 +804,11 @@ void main() {
   );
 
   testWidgets(
-    'admin approval requires a leave type and shows all-skipped details',
+    'admin approves typed requests without a paid or unpaid chooser',
     (tester) async {
       final repository = _FakeLeaveRepository([_request()])
         ..decisionResult = _request(
           status: LeaveStatus.approved,
-          leaveType: LeaveType.paid,
           noDaysWritten: true,
           skipped: const [
             SkippedDate(date: '2026-10-12', reason: 'weekly_off'),
@@ -436,12 +820,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Asha'));
       await tester.pumpAndSettle();
-      final approve = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Approve'),
-      );
-      expect(approve.onPressed, isNull);
-      await tester.tap(find.text('Paid: no salary deduction'));
-      await tester.pumpAndSettle();
+      expect(find.text('Paid: no salary deduction'), findsNothing);
+      expect(find.text('Approval type'), findsNothing);
       expect(
         tester
             .widget<FilledButton>(find.widgetWithText(FilledButton, 'Approve'))
@@ -516,7 +896,8 @@ void main() {
       final repository = _FakeLeaveRepository([
         _request(
           status: LeaveStatus.approved,
-          leaveType: LeaveType.unpaid,
+          paid: false,
+          leaveTypeName: 'Unpaid Leave',
           note: 'Approved',
           written: const ['2026-10-12'],
           skipped: const [SkippedDate(date: '2026-10-13', reason: 'holiday')],
@@ -532,7 +913,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Asha'));
       await tester.pumpAndSettle();
-      expect(find.text('unpaid leave'), findsOneWidget);
+      expect(find.textContaining('Unpaid Leave'), findsNWidgets(2));
       expect(find.text('Admin note: Approved'), findsOneWidget);
       expect(find.textContaining('2026-10-12'), findsOneWidget);
       expect(find.text('2026-10-13: Holiday'), findsOneWidget);
@@ -570,8 +951,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Someone already decided this request.'), findsOneWidget);
     expect(repository.decideCalls, 1);
-    expect(repository.lastLeaveType, isNull);
     expect(repository.lastNote, 'Insufficient coverage');
+  });
+
+  testWidgets('old pending request cannot be approved but can be rejected', (
+    tester,
+  ) async {
+    final repository = _FakeLeaveRepository([
+      _request(leaveTypeId: null, leaveTypeName: null, paid: null),
+    ]);
+    await tester.pumpWidget(_app(const AdminLeaveRequestsScreen(), repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Asha'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'This request was made before leave types existed. Reject it, or ask the employee to apply again.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Approve'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Reject'))
+          .onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('pending leave badge displays server request count', (
