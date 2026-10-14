@@ -54,6 +54,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Example Company'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
     expect(find.text('Maximum GPS accuracy: 100 m'), findsOneWidget);
     expect(
       find.text('Changing this also changes past months that are not locked.'),
@@ -84,6 +86,33 @@ void main() {
       'weeklyOffDays': [0, 6],
     });
     expect(find.text('Attendance settings saved.'), findsOneWidget);
+  });
+
+  testWidgets('shows leave year setting and saves only that changed field', (
+    tester,
+  ) async {
+    final repository = _FakeViewsRepository();
+    await tester.pumpWidget(_app(repository));
+    await tester.pumpAndSettle();
+    expect(find.text('Leave types'), findsOneWidget);
+    expect(
+      find.text(
+        'Changing this moves the leave year boundaries and therefore the balances. Approved leave stays as it is.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('leave-year-start-month')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('April').last);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('save-attendance-settings')),
+    );
+    await tester.tap(find.byKey(const ValueKey('save-attendance-settings')));
+    await tester.pumpAndSettle();
+    expect(repository.changes, {'leaveYearStartMonth': 4});
   });
 
   testWidgets('shows settings update errors from the server', (tester) async {

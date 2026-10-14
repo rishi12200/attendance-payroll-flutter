@@ -22,6 +22,7 @@ import '../../features/attendance/presentation/employee_attendance_calendar_scre
 import '../../features/leave/presentation/admin_leave_requests_screen.dart';
 import '../../features/leave/presentation/apply_leave_screen.dart';
 import '../../features/leave/presentation/my_leave_requests_screen.dart';
+import '../../features/leave/presentation/admin_leave_types_screen.dart';
 import '../auth/auth_providers.dart';
 import 'router_redirect.dart';
 
@@ -83,6 +84,25 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin/settings',
             builder: (context, state) => const AdminAttendanceSettingsScreen(),
+            routes: [
+              GoRoute(
+                path: 'leave-types',
+                builder: (context, state) => const AdminLeaveTypesScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) =>
+                        const AdminLeaveTypeFormScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) => AdminLeaveTypeEditRoute(
+                      typeId: state.pathParameters['id']!,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           GoRoute(
             path: '/admin/flagged-checkins',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/api/app_exception.dart';
 import '../data/attendance_views_providers.dart';
@@ -41,6 +42,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   late int _maxAccuracy;
   late bool _rejectMockLocation;
   late bool _enforceCheckoutLocation;
+  late int _leaveYearStartMonth;
   bool _saving = false;
 
   @override
@@ -52,6 +54,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     _maxAccuracy = widget.settings.maxAccuracyMeters;
     _rejectMockLocation = widget.settings.rejectMockLocation;
     _enforceCheckoutLocation = widget.settings.enforceCheckoutLocation;
+    _leaveYearStartMonth = widget.settings.leaveYearStartMonth;
   }
 
   @override
@@ -84,6 +87,9 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     if (_enforceCheckoutLocation != original.enforceCheckoutLocation) {
       changes['enforceCheckoutLocation'] = _enforceCheckoutLocation;
     }
+    if (_leaveYearStartMonth != original.leaveYearStartMonth) {
+      changes['leaveYearStartMonth'] = _leaveYearStartMonth;
+    }
     return changes;
   }
 
@@ -91,6 +97,36 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(16),
     children: [
+      ListTile(
+        key: const ValueKey('settings-leave-types-entry'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Leave types'),
+        subtitle: const Text('Manage employee leave options and quotas'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _saving
+            ? null
+            : () => context.push('/admin/settings/leave-types'),
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<int>(
+        key: const ValueKey('leave-year-start-month'),
+        initialValue: _leaveYearStartMonth,
+        decoration: const InputDecoration(labelText: 'Leave year starts in'),
+        items: [
+          for (var month = 1; month <= 12; month++)
+            DropdownMenuItem(value: month, child: Text(_monthName(month))),
+        ],
+        onChanged: _saving
+            ? null
+            : (value) => setState(() => _leaveYearStartMonth = value ?? 1),
+      ),
+      const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(
+          'Changing this moves the leave year boundaries and therefore the balances. Approved leave stays as it is.',
+        ),
+      ),
+      const SizedBox(height: 20),
       TextField(
         key: const ValueKey('settings-company-name'),
         controller: _companyName,
@@ -186,9 +222,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     if (changes.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await ref
-          .read(attendanceViewsRepositoryProvider)
-          .updateSettings(changes);
+      await ref.read(attendanceViewsRepositoryProvider).updateSettings(changes);
       if (!mounted) return;
       ref.invalidate(attendanceSettingsProvider);
       ref.invalidate(myAttendanceCalendarProvider);
@@ -200,9 +234,8 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
       );
     } on AppException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -228,15 +261,23 @@ class _SettingsError extends StatelessWidget {
   );
 }
 
-String _weekdayName(int weekday) => const [
-  'Sun',
-  'Mon',
-  'Tue',
-  'Wed',
-  'Thu',
-  'Fri',
-  'Sat',
-][weekday];
+String _weekdayName(int weekday) =>
+    const ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][weekday];
+
+String _monthName(int month) => const [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+][month - 1];
 
 bool _sameList(List<int> first, List<int> second) {
   if (first.length != second.length) return false;
