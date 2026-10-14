@@ -39,13 +39,6 @@ export interface LeaveTransaction {
   getEmployeeLeaveRequests(empId: string): Promise<LeaveRequestRecord[]>;
   createLeaveRequest(record: Omit<LeaveRequestRecord, 'id'>): string;
   updateLeaveRequest(id: string, changes: Record<string, unknown>): void;
-  setAttendanceDay(input: {
-    id: string;
-    empId: string;
-    month: string;
-    date: string;
-    day: AttendanceDay;
-  }): void;
   mergeAttendanceDay(input: {
     id: string;
     empId: string;

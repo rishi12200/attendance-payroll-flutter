@@ -107,14 +107,15 @@ test('classifies a holiday before a weekly off and supports custom weekdays', ()
   );
 });
 
-test('full-day classification skips a half-leave marker after punch statuses', () => {
+test('full-day classification reports marker conflicts and keeps punch reasons otherwise', () => {
   const result = classifyLeaveDates({
-    dates: ['2026-10-05', '2026-10-06'],
+    dates: ['2026-10-05', '2026-10-06', '2026-10-07'],
     holidays: new Set(),
     weeklyOffDays: [],
     days: {
       '2026-10-05': { status: 'A', halfLeave: { session: 'first_half' } },
-      '2026-10-06': { status: 'P', halfLeave: { session: 'first_half' } },
+      '2026-10-06': { status: 'P' },
+      '2026-10-07': { status: 'P', halfLeave: { session: 'first_half' } },
     },
   });
   assert.deepEqual(result, {
@@ -122,6 +123,7 @@ test('full-day classification skips a half-leave marker after punch statuses', (
     skipped: [
       { date: '2026-10-05', reason: 'already_on_leave' },
       { date: '2026-10-06', reason: 'has_punch' },
+      { date: '2026-10-07', reason: 'already_on_leave' },
     ],
   });
 });

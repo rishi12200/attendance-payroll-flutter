@@ -139,18 +139,6 @@ export class FirestoreLeaveStore implements LeaveStore {
         updateLeaveRequest: (id, changes) => {
           firestoreTransaction.update(leaves.doc(id), changes);
         },
-        setAttendanceDay: ({ id, empId, month, date, day }) => {
-          const reference = attendance.doc(id);
-          if (existingAttendance.has(id)) {
-            firestoreTransaction.update(reference, new FieldPath('days', date), day);
-          } else {
-            firestoreTransaction.set(
-              reference,
-              { empId, month, days: { [date]: day } },
-              { merge: true },
-            );
-          }
-        },
         mergeAttendanceDay: ({ id, empId, month, date, fields }) => {
           const reference = attendance.doc(id);
           if (existingAttendance.has(id)) {

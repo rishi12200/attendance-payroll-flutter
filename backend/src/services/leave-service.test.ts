@@ -86,13 +86,6 @@ class FakeLeaveStore implements LeaveStore {
     let wrote = false;
     const requestCreates: LeaveRequestRecord[] = [];
     const requestUpdates: Array<{ id: string; changes: Record<string, unknown> }> = [];
-    const attendanceWrites: Array<{
-      id: string;
-      empId: string;
-      month: string;
-      date: string;
-      day: AttendanceDay;
-    }> = [];
     const attendanceMerges: Array<{ id: string; empId: string; month: string; date: string; fields: AttendanceDay }> = [];
     const auditWrites: LeaveAuditRecord[] = [];
     const read = <T>(workRead: () => T): T => {
@@ -147,11 +140,6 @@ class FakeLeaveStore implements LeaveStore {
         this.events.push('update-request');
         requestUpdates.push({ id, changes });
       },
-      setAttendanceDay: (write) => {
-        wrote = true;
-        this.events.push('write-attendance');
-        attendanceWrites.push(write);
-      },
       mergeAttendanceDay: (write) => {
         wrote = true;
         this.events.push('merge-attendance');
@@ -170,17 +158,6 @@ class FakeLeaveStore implements LeaveStore {
         const request = this.requests.get(id);
         assert.ok(request, `request ${id} must exist for an update`);
         this.requests.set(id, { ...request, ...changes } as LeaveRequestRecord);
-      }
-      for (const write of attendanceWrites) {
-        const current = this.attendance.get(write.id) ?? {
-          empId: write.empId,
-          month: write.month,
-          days: {},
-        };
-        this.attendance.set(write.id, {
-          ...current,
-          days: { ...current.days, [write.date]: write.day },
-        });
       }
       for (const write of attendanceMerges) {
         const current = this.attendance.get(write.id) ?? {
@@ -311,6 +288,25 @@ test('reserves exact half-day quotas and splits quota by the leave year', async 
   assert.equal(newLeaveYear.requestedDays, 0.5);
 });
 
+test('concurrent half-day applications cannot reserve more than one quota', async () => {
+  const { store, leaves } = service();
+  store.settings = { weeklyOffDays: [] };
+  store.types.set('annual', { ...store.types.get('annual')!, annualQuotaDays: 0.5 });
+  const results = await Promise.allSettled([
+    leaves.apply(empCaller, {
+      leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05',
+      reason: 'x', session: 'first_half',
+    }),
+    leaves.apply(empCaller, {
+      leaveTypeId: 'annual', fromDate: '2026-10-06', toDate: '2026-10-06',
+      reason: 'x', session: 'second_half',
+    }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(results.filter((result) => result.status === 'rejected').length, 1);
+  assert.equal(store.requests.size, 1);
+});
+
 test('rejects admins, inactive employees, locked months and overlapping requests', async () => {
   const { store, leaves } = service();
   await expectError(
@@ -415,7 +411,7 @@ test('approves paid and unpaid requests into L and UL attendance days with audit
     assert.equal(store.audits[0]?.requestId, request.id);
     assert.equal(store.audits[0]?.leaveTypeId, request.leaveTypeId);
     assert.ok(store.audits[0]?.at instanceof Timestamp);
-    const decisionWrite = store.events.indexOf('write-attendance');
+    const decisionWrite = store.events.indexOf('merge-attendance');
     assert.ok(store.events.slice(0, decisionWrite).includes('read-settings'));
     assert.ok(store.events.slice(0, decisionWrite).includes('read-holidays'));
     assert.ok(store.events.slice(0, decisionWrite).includes('read-payroll'));
@@ -430,7 +426,7 @@ test('skips weekly offs, holidays and punches while overwriting admin absence', 
     empId: 'emp-1', month: '2026-10',
     days: {
       '2026-10-05': { status: 'P', inTime: timestamp },
-      '2026-10-07': { status: 'A', source: 'admin_edit' },
+      '2026-10-07': { status: 'A', source: 'admin_edit', note: 'keep metadata' },
     },
   });
   const request = await pendingRequest(leaves, '2026-10-04', '2026-10-07');
@@ -444,6 +440,7 @@ test('skips weekly offs, holidays and punches while overwriting admin absence', 
   assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-05']?.status, 'P');
   assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-05']?.inTime, timestamp);
   assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-07']?.status, 'L');
+  assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-07']?.note, 'keep metadata');
 });
 
 test('leave approval classifies scoped holidays by the employee primary branch', async () => {

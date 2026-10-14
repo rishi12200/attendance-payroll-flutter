@@ -100,10 +100,10 @@ export function classifyLeaveDates(input: {
     let reason: LeaveSkipReason | undefined;
     if ((input.doj != null && date < input.doj) || (input.dol != null && date > input.dol)) {
       reason = 'outside_employment';
-    } else if (input.days[date]?.status === 'P' || input.days[date]?.status === 'H') {
-      reason = 'has_punch';
     } else if (input.days[date]?.halfLeave != null) {
       reason = 'already_on_leave';
+    } else if (input.days[date]?.status === 'P' || input.days[date]?.status === 'H') {
+      reason = 'has_punch';
     } else if (input.holidays.has(date)) {
       reason = 'holiday';
     } else {

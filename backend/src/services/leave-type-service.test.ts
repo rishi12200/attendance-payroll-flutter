@@ -79,6 +79,7 @@ test('enforces system rules and blocks deactivation with pending requests', asyn
   store.values.set('annual', seeded('annual', 'Annual Leave', 'AL'));
   const service = new LeaveTypeService(store);
   assert.equal(errorCode(await service.update('unpaid', { paid: true }, 'admin').catch((error) => error)), 'SYSTEM_LEAVE_TYPE');
+  assert.equal(errorCode(await service.update('legacy-paid', { annualQuotaDays: 1 }, 'admin').catch((error) => error)), 'SYSTEM_LEAVE_TYPE');
   assert.equal(errorCode(await service.deactivate('unpaid', 'admin').catch((error) => error)), 'SYSTEM_LEAVE_TYPE');
   assert.equal(errorCode(await service.reactivate('legacy-paid', 'admin').catch((error) => error)), 'SYSTEM_LEAVE_TYPE');
   store.pending = 2;

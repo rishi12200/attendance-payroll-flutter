@@ -104,18 +104,12 @@ export class LeaveService {
     input: { leaveTypeId: string; fromDate: string; toDate: string; reason: string; session?: LeaveSession },
   ): Promise<LeaveDto> {
     this.requireRole(caller.role, 'employee');
-    const dates = this.expandRequest(input.fromDate, input.toDate);
-    const months = monthsTouched(input.fromDate, input.toDate);
     const session = input.session ?? 'full';
 
     const id = await this.store.runTransaction(async (transaction) => {
-      const [currentEmployee, leaveType, settingsDocument, holidayRows, lockedMonths, requests] = await Promise.all([
+      const [currentEmployee, leaveType] = await Promise.all([
         transaction.getEmployee(caller.uid),
         transaction.getLeaveType(input.leaveTypeId),
-        transaction.getCompanySettings(),
-        transaction.getHolidays(months),
-        Promise.all(months.map((month) => transaction.getPayrollMonth(month))),
-        transaction.getEmployeeLeaveRequests(caller.uid),
       ]);
       if (!currentEmployee || currentEmployee.role !== 'employee' || currentEmployee.status !== 'active') {
         throw new AppError(403, 'FORBIDDEN', 'An active employee account is required.');
@@ -124,7 +118,15 @@ export class LeaveService {
       if (leaveType.status !== 'active' || leaveType.id === 'legacy-paid') {
         throw new AppError(422, 'LEAVE_TYPE_INACTIVE', 'This leave type is not available for new requests.');
       }
+      const dates = this.expandRequest(input.fromDate, input.toDate);
+      const months = monthsTouched(input.fromDate, input.toDate);
       this.assertWithinEmploymentWindow(currentEmployee, input.fromDate, input.toDate);
+      const [settingsDocument, holidayRows, lockedMonths, requests] = await Promise.all([
+        transaction.getCompanySettings(),
+        transaction.getHolidays(months),
+        Promise.all(months.map((month) => transaction.getPayrollMonth(month))),
+        transaction.getEmployeeLeaveRequests(caller.uid),
+      ]);
 
       const holidays = holidayRows
         .filter((holiday) => holidayAppliesToBranch(holiday, currentEmployee.primaryBranchId ?? null))
@@ -407,9 +409,9 @@ export class LeaveService {
             } },
           });
         } else {
-          transaction.setAttendanceDay({
+          transaction.mergeAttendanceDay({
             id: attendanceId(month, request.empId), empId: request.empId, month, date,
-            day: {
+            fields: {
               status: leaveType.paid ? 'L' : 'UL',
               source: 'leave', leaveRequestId: input.id, leaveTypeId: leaveType.id,
               editedBy: input.caller.uid, editedAt: timestamp,

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   leaveApplyBodySchema,
+  leaveBalanceQuerySchema,
   leaveDecisionBodySchema,
   leaveListQuerySchema,
   leaveMeQuerySchema,
@@ -36,6 +37,15 @@ test('leave status queries and IDs are validated strictly', () => {
   });
   assert.equal(leaveMeQuerySchema.safeParse({ status: 'unknown' }).success, false);
   assert.equal(leaveParamsSchema.safeParse({ id: '  ' }).success, false);
+});
+
+test('leave balance query validates optional year and employee id', () => {
+  assert.deepEqual(leaveBalanceQuerySchema.parse({ year: '2025', empId: ' emp-1 ' }), {
+    year: 2025, empId: 'emp-1',
+  });
+  assert.equal(leaveBalanceQuerySchema.safeParse({ year: '1999' }).success, false);
+  assert.equal(leaveBalanceQuerySchema.safeParse({ year: 'not-a-year' }).success, false);
+  assert.equal(leaveBalanceQuerySchema.safeParse({ extra: 'x' }).success, false);
 });
 
 test('decision accepts only the decision and optional note', () => {

@@ -1,4 +1,5 @@
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
+import { AppError } from '../errors/app-error';
 import type { LeaveTypeRecord, LeaveTypeStore } from './leave-type-service';
 
 export class FirestoreLeaveTypeStore implements LeaveTypeStore {
@@ -35,11 +36,22 @@ export class FirestoreLeaveTypeStore implements LeaveTypeStore {
     const auditRef = this.firestore.collection('audit_logs').doc();
     await this.firestore.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(typeRef);
+      const allTypes = await transaction.get(this.firestore.collection('leave_types'));
       if (input.createOnly && snapshot.exists) {
         throw new Error('Leave type id already exists.');
       }
       if (!input.createOnly && !snapshot.exists) {
         throw new Error('Leave type no longer exists.');
+      }
+      for (const candidate of allTypes.docs) {
+        if (candidate.id === input.id) continue;
+        const data = candidate.data();
+        if (String(data.name ?? '').trim().toLocaleLowerCase() === input.after.name.trim().toLocaleLowerCase()) {
+          throw new AppError(409, 'LEAVE_TYPE_NAME_EXISTS', 'A leave type already uses this name.');
+        }
+        if (String(data.code ?? '').toUpperCase() === input.after.code.toUpperCase()) {
+          throw new AppError(409, 'LEAVE_TYPE_CODE_EXISTS', 'A leave type already uses this code.');
+        }
       }
       transaction.set(typeRef, input.after, { merge: !input.createOnly });
       transaction.create(auditRef, {
