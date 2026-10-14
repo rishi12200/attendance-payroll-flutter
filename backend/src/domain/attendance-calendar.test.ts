@@ -159,3 +159,93 @@ test('calendar includes the leave request id and summarizes paid and unpaid leav
   assert.equal(result.summary.unpaidLeave, 1);
   assert.equal(result.summary.lop, 1);
 });
+
+test('classifies half-leave rows, preserves day details, and splits the summary in halves', () => {
+  const entries = [
+    { date: '2028-02-01', marker: { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'r1' }, status: 'P', inTime: '09:00' },
+    { date: '2028-02-02', marker: { session: 'second_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'r2' } },
+    { date: '2028-02-03', marker: { session: 'first_half', paid: false, leaveTypeId: 'unpaid', leaveRequestId: 'r3' }, status: 'P' },
+    { date: '2028-02-04', marker: { session: 'second_half', paid: false, leaveTypeId: 'unpaid', leaveRequestId: 'r4' } },
+    { date: '2028-02-15', marker: { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'r5' } },
+    { date: '2028-02-05', marker: { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'r6' }, status: 'A' },
+  ];
+  const monthDays = Array.from({ length: 29 }, (_, index) => [
+    `2028-02-${String(index + 1).padStart(2, '0')}`,
+    { status: 'P' },
+  ]);
+  const days = Object.fromEntries([...monthDays, ...entries.map((row) => [row.date, {
+    ...(row.status === undefined ? {} : { status: row.status }),
+    halfLeave: row.marker,
+    ...(row.inTime === undefined ? {} : { inTime: row.inTime }),
+  }])]);
+  const result = calendar({
+    today: '2028-02-15',
+    weeklyOffDays: [],
+    days,
+    leaveTypeNames: { annual: 'Annual Leave', unpaid: 'Unpaid Leave' },
+  });
+  assert.deepEqual(result.days.slice(0, 4).map((day) => [day.status, day.otherHalf]), [
+    ['HL', 'present'], ['HL', 'absent'], ['HL', 'present'], ['HL', 'absent'],
+  ]);
+  assert.equal(result.days[14]?.otherHalf, 'pending');
+  assert.deepEqual(result.days[0]?.halfLeave, {
+    session: 'first_half', paid: true, leaveTypeId: 'annual',
+    leaveTypeName: 'Annual Leave', leaveRequestId: 'r1',
+  });
+  assert.equal(result.days[0]?.inTime, '09:00');
+  assert.equal(result.summary.paidLeave, 2);
+  assert.equal(result.summary.unpaidLeave, 1);
+  assert.equal(result.summary.present, 24);
+  assert.equal(result.summary.absent, 1.5);
+  assert.equal(result.summary.pending, 0.5);
+  assert.equal(result.summary.lop, 2.5);
+});
+
+test('stored H, L and UL statuses win over half-leave markers', () => {
+  const result = calendar({
+    today: '2028-02-01',
+    weeklyOffDays: [],
+    days: Object.fromEntries(['H', 'L', 'UL'].map((status, index) => [
+      `2028-02-0${index + 1}`,
+      { status, halfLeave: { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'r' } },
+    ])),
+  });
+  assert.deepEqual(result.days.slice(0, 3).map((day) => day.status), ['H', 'L', 'UL']);
+  assert.equal(result.summary.paidLeave, 1);
+  assert.equal(result.summary.unpaidLeave, 1);
+  assert.equal(result.summary.halfDays, 1);
+});
+
+test('ignores marker-only days outside employment and honors them on holidays', () => {
+  const marker = { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'r' };
+  const result = calendar({
+    today: '2028-02-20',
+    doj: '2028-02-02',
+    holidays: { '2028-02-03': 'Holiday' },
+    weeklyOffDays: [],
+    days: { '2028-02-01': { halfLeave: marker }, '2028-02-03': { halfLeave: marker } },
+  });
+  assert.equal(result.days[0]?.status, 'NOT_JOINED');
+  assert.equal(result.days[2]?.status, 'HL');
+});
+
+test('summary total remains one day per date for half markers in all month lengths', () => {
+  for (const month of ['2027-02', '2028-02', '2028-01', '2028-04']) {
+    const count = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5),), 0)).getUTCDate();
+    const days = Object.fromEntries(Array.from({ length: count }, (_, index) => {
+      const date = `${month}-${String(index + 1).padStart(2, '0')}`;
+      return [date, { halfLeave: {
+        session: 'first_half', paid: index % 2 === 0,
+        leaveTypeId: index % 2 === 0 ? 'annual' : 'unpaid', leaveRequestId: `r${index}`,
+      } }];
+    }));
+    const result = calendar({ month, today: `${month}-01`, weeklyOffDays: [], days });
+    const summary = result.summary;
+    assert.equal(
+      summary.weeklyOffs + summary.holidays + summary.present + summary.halfDays +
+        summary.absent + summary.paidLeave + summary.unpaidLeave +
+        summary.notJoinedOrLeftDays + summary.pending,
+      summary.daysInMonth,
+    );
+  }
+});

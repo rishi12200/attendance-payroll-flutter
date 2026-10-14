@@ -6,6 +6,7 @@ export type CalendarStatus =
   | 'A'
   | 'L'
   | 'UL'
+  | 'HL'
   | 'WEEKLY_OFF'
   | 'HOLIDAY'
   | 'NOT_JOINED'
@@ -23,6 +24,7 @@ export interface StoredAttendanceDay {
   leaveRequestId?: unknown;
   editedBy?: unknown;
   editedAt?: unknown;
+  halfLeave?: unknown;
   [key: string]: unknown;
 }
 
@@ -41,6 +43,16 @@ export interface DayEntry {
   leaveRequestId?: unknown;
   editedBy?: unknown;
   editedAt?: unknown;
+  halfLeave?: {
+    session: unknown;
+    paid: unknown;
+    leaveTypeId: unknown;
+    leaveTypeName?: string;
+    leaveRequestId: unknown;
+  };
+  otherHalf?: 'present' | 'absent' | 'pending';
+  leaveTypeId?: unknown;
+  leaveTypeName?: string;
 }
 
 export interface CalendarSummary {
@@ -84,6 +96,7 @@ export function buildMonthCalendar(input: {
   days: Record<string, StoredAttendanceDay>;
   holidays: Record<string, string>;
   weeklyOffDays: number[];
+  leaveTypeNames?: Readonly<Record<string, string>>;
 }): MonthCalendar {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.month)) {
     throw new RangeError('Calendar month must use YYYY-MM.');
@@ -127,10 +140,17 @@ export function buildMonthCalendar(input: {
       status = 'LEFT';
       record = undefined;
     } else if (record !== undefined) {
-      if (typeof record.status !== 'string' || !storedStatuses.has(record.status)) {
+      const marker = record.halfLeave;
+      const hasMarker = isHalfLeaveMarker(marker);
+      const fullStatusWins = hasMarker && ['H', 'L', 'UL'].includes(String(record.status));
+      // A later admin full-day edit takes precedence over an earlier half-leave marker.
+      if (hasMarker && !fullStatusWins) {
+        status = 'HL';
+      } else if (typeof record.status !== 'string' || !storedStatuses.has(record.status)) {
         throw new TypeError(`Attendance record for ${date} has an invalid status.`);
+      } else {
+        status = record.status as CalendarStatus;
       }
-      status = record.status as CalendarStatus;
     } else if (Object.hasOwn(input.holidays, date)) {
       status = 'HOLIDAY';
     } else if (weeklyOffDays.has(weekday)) {
@@ -151,31 +171,72 @@ export function buildMonthCalendar(input: {
       for (const field of storedFields) {
         if (record[field] !== undefined) entry[field] = record[field];
       }
+      const marker = record.halfLeave;
+      if (isHalfLeaveMarker(marker) && status === 'HL') {
+        const typeId = marker.leaveTypeId;
+        const leaveTypeName = typeof typeId === 'string'
+          ? input.leaveTypeNames?.[typeId]
+          : undefined;
+        entry.halfLeave = {
+          session: marker.session,
+          paid: marker.paid,
+          leaveTypeId: typeId,
+          ...(leaveTypeName === undefined ? {} : { leaveTypeName }),
+          leaveRequestId: marker.leaveRequestId,
+        };
+        entry.otherHalf = record.status === 'P' || record.inTime != null
+          ? 'present'
+          : date < input.today
+            ? 'absent'
+            : 'pending';
+      }
+      if (status === 'L' || status === 'UL') {
+        if (typeof record.leaveTypeId === 'string') {
+          entry.leaveTypeId = record.leaveTypeId;
+          entry.leaveTypeName = input.leaveTypeNames?.[record.leaveTypeId] ??
+            (status === 'L' ? 'Paid Leave' : 'Unpaid Leave');
+        } else {
+          entry.leaveTypeName = status === 'L' ? 'Paid Leave' : 'Unpaid Leave';
+        }
+      }
     }
     days.push(entry);
   }
 
   const count = (status: CalendarStatus) =>
     days.reduce((total, day) => total + Number(day.status === status), 0);
-  const present = count('P');
+  const markerDays = days.filter((day) => day.status === 'HL');
+  const present = count('P') + markerDays.filter((day) => day.otherHalf === 'present').length * 0.5;
   const halfDays = count('H');
   const absent = count('A');
-  const paidLeave = count('L');
-  const unpaidLeave = count('UL');
-  const lop = absent + unpaidLeave + 0.5 * halfDays;
+  const paidLeave = count('L') + markerDays.filter((day) => day.halfLeave?.paid === true).length * 0.5;
+  const unpaidLeave = count('UL') + markerDays.filter((day) => day.halfLeave?.paid === false).length * 0.5;
+  const absentWithHalf = count('A') + markerDays.filter((day) => day.otherHalf === 'absent').length * 0.5;
+  const pendingWithHalf = count('PENDING') + markerDays.filter((day) => day.otherHalf === 'pending').length * 0.5;
+  const lop = absentWithHalf + unpaidLeave + 0.5 * halfDays;
   const summary: CalendarSummary = {
     daysInMonth,
     weeklyOffs: count('WEEKLY_OFF'),
     holidays: count('HOLIDAY'),
     present,
     halfDays,
-    absent,
+    absent: absentWithHalf,
     paidLeave,
     unpaidLeave,
     notJoinedOrLeftDays: count('NOT_JOINED') + count('LEFT'),
-    pending: count('PENDING'),
+    pending: pendingWithHalf,
     lop,
     payableDays: daysInMonth - lop,
   };
   return { days, summary };
+}
+
+function isHalfLeaveMarker(value: unknown): value is {
+  session: unknown;
+  paid: unknown;
+  leaveTypeId: unknown;
+  leaveRequestId: unknown;
+} {
+  return typeof value === 'object' && value !== null &&
+    'session' in value && 'paid' in value && 'leaveTypeId' in value && 'leaveRequestId' in value;
 }
