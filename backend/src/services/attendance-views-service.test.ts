@@ -227,14 +227,16 @@ test('settings returns all defaults and PATCH records editor with effective valu
     maxAccuracyMeters: 100,
     rejectMockLocation: true,
     enforceCheckoutLocation: false,
+    leaveYearStartMonth: 1,
   });
   const result = await settings.updateSettings(
     admin,
-    { companyName: 'Example', weeklyOffDays: [0, 6], perDayBasis: 'working' },
+    { companyName: 'Example', weeklyOffDays: [0, 6], perDayBasis: 'working', leaveYearStartMonth: 4 },
   );
   assert.equal(result.companyName, 'Example');
   assert.deepEqual(result.weeklyOffDays, [0, 6]);
   assert.equal(result.perDayBasis, 'working');
+  assert.equal(result.leaveYearStartMonth, 4);
   assert.equal(result.editedBy, admin.uid);
   assert.ok(store.settings?.updatedAt instanceof Timestamp);
   await expectError(
