@@ -19,6 +19,7 @@ export type SettingsPatch = Partial<
     | 'maxAccuracyMeters'
     | 'rejectMockLocation'
     | 'enforceCheckoutLocation'
+    | 'leaveYearStartMonth'
   >
 >;
 

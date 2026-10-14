@@ -23,6 +23,7 @@ test('attendance settings use defaults for a missing document or fields', () => 
     maxAccuracyMeters: 100,
     rejectMockLocation: true,
     enforceCheckoutLocation: false,
+    leaveYearStartMonth: 1,
   });
   assert.deepEqual(attendanceSettingsFromDocument({}), {
     ...DEFAULT_ATTENDANCE_SETTINGS,
@@ -39,6 +40,7 @@ test('attendance settings use defaults for a missing document or fields', () => 
       maxAccuracyMeters: 75,
       rejectMockLocation: true,
       enforceCheckoutLocation: true,
+      leaveYearStartMonth: 1,
     },
   );
 });
@@ -46,4 +48,6 @@ test('attendance settings use defaults for a missing document or fields', () => 
 test('attendance settings reject invalid stored values', () => {
   assert.throws(() => attendanceSettingsFromDocument({ maxAccuracyMeters: -1 }));
   assert.throws(() => attendanceSettingsFromDocument({ rejectMockLocation: 1 }));
+  assert.throws(() => attendanceSettingsFromDocument({ leaveYearStartMonth: 13 }));
+  assert.equal(attendanceSettingsFromDocument({ leaveYearStartMonth: 4 }).leaveYearStartMonth, 4);
 });

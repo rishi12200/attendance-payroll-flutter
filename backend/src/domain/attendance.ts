@@ -13,6 +13,7 @@ export interface AttendanceSettings {
   maxAccuracyMeters: number;
   rejectMockLocation: boolean;
   enforceCheckoutLocation: boolean;
+  leaveYearStartMonth: number;
 }
 
 export const DEFAULT_ATTENDANCE_SETTINGS: Readonly<AttendanceSettings> = {
@@ -22,6 +23,7 @@ export const DEFAULT_ATTENDANCE_SETTINGS: Readonly<AttendanceSettings> = {
   maxAccuracyMeters: 100,
   rejectMockLocation: true,
   enforceCheckoutLocation: false,
+  leaveYearStartMonth: 1,
 };
 
 export function attendanceSettingsFromDocument(
@@ -39,6 +41,8 @@ export function attendanceSettingsFromDocument(
   const enforceCheckoutLocation =
     document?.enforceCheckoutLocation ??
     DEFAULT_ATTENDANCE_SETTINGS.enforceCheckoutLocation;
+  const leaveYearStartMonth = document?.leaveYearStartMonth ??
+    DEFAULT_ATTENDANCE_SETTINGS.leaveYearStartMonth;
 
   if (
     typeof companyName !== 'string' ||
@@ -52,7 +56,11 @@ export function attendanceSettingsFromDocument(
     !Number.isFinite(maxAccuracyMeters) ||
     maxAccuracyMeters < 0 ||
     typeof rejectMockLocation !== 'boolean' ||
-    typeof enforceCheckoutLocation !== 'boolean'
+    typeof enforceCheckoutLocation !== 'boolean' ||
+    typeof leaveYearStartMonth !== 'number' ||
+    !Number.isInteger(leaveYearStartMonth)
+    || leaveYearStartMonth < 1
+    || leaveYearStartMonth > 12
   ) {
     throw new TypeError('Company attendance settings contain invalid values.');
   }
@@ -63,5 +71,6 @@ export function attendanceSettingsFromDocument(
     maxAccuracyMeters,
     rejectMockLocation,
     enforceCheckoutLocation,
+    leaveYearStartMonth,
   };
 }

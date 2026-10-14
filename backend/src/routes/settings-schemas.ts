@@ -13,6 +13,7 @@ export const patchSettingsSchema = z
     maxAccuracyMeters: z.number().int().min(10).max(500).optional(),
     rejectMockLocation: z.boolean().optional(),
     enforceCheckoutLocation: z.boolean().optional(),
+    leaveYearStartMonth: z.number().int().min(1).max(12).optional(),
   })
   .refine((settings) => Object.keys(settings).length > 0, {
     message: 'At least one setting must be provided.',
