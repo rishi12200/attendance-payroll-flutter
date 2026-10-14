@@ -305,6 +305,19 @@ test('check-in succeeds after the admin marks a leave day Present', async () => 
   assert.ok(day?.inTime);
 });
 
+test('check-in accepts a marker-only half leave and keeps it when writing punch fields', async () => {
+  const { store, service: attendance } = service();
+  const marker = { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'leave-1' };
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10', days: { '2026-10-10': { halfLeave: marker } },
+  });
+  await attendance.checkIn(caller, input);
+  const day = store.attendance.get('2026-10_emp-1')?.days['2026-10-10'];
+  assert.equal(day?.status, 'P');
+  assert.deepEqual(day?.halfLeave, marker);
+  assert.ok(day?.inTime);
+});
+
 test('duplicate and racing check-ins cannot overwrite an existing punch', async () => {
   const { store, service: attendance } = service();
   await attendance.checkIn(caller, input);
@@ -407,6 +420,21 @@ test('checkout writes worked time to the check-in day and rejects repeat checkou
     59,
   );
   await expectError(attendance.checkOut(caller, input), 409, 'ALREADY_CHECKED_OUT');
+});
+
+test('checkout keeps a half-leave marker already stored with the open punch', async () => {
+  const { store, service: attendance } = service();
+  const marker = { session: 'second_half', paid: false, leaveTypeId: 'unpaid', leaveRequestId: 'leave-half' };
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10', days: {
+      '2026-10-10': {
+        status: 'P', halfLeave: marker,
+        inTime: Timestamp.fromDate(new Date('2026-10-10T03:30:00.000Z')),
+      },
+    },
+  });
+  await attendance.checkOut(caller, input);
+  assert.deepEqual(store.attendance.get('2026-10_emp-1')?.days['2026-10-10']?.halfLeave, marker);
 });
 
 test('checkout finds yesterday across a month boundary and rejects missing punches', async () => {

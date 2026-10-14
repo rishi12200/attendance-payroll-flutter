@@ -128,11 +128,12 @@ export class AttendanceViewsService {
     const { start, end } = monthRange(month);
     const now = this.now();
     const today = istDateOf(now);
-    const [employees, settingsDocument, holidays, branches] = await Promise.all([
+    const [employees, settingsDocument, holidays, branches, leaveTypes] = await Promise.all([
       this.dependencies.employees.listEmployees(),
       this.dependencies.store.getCompanySettings(),
       this.dependencies.store.listHolidays(start, end),
       this.dependencies.branches.listBranches(),
+      this.dependencies.store.listLeaveTypes(),
     ]);
     const included = employees
       .filter(
@@ -160,6 +161,7 @@ export class AttendanceViewsService {
         days: dayMap,
         holidays: holidayMapOf(holidays.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null))),
         weeklyOffDays: settings.weeklyOffDays,
+        leaveTypeNames: leaveTypeNameMap(leaveTypes),
       });
       const entry = addBranchNames(
         days.find((day) => day.date === date)!,
@@ -183,6 +185,7 @@ export class AttendanceViewsService {
       'A',
       'L',
       'UL',
+      'HL',
       'WEEKLY_OFF',
       'HOLIDAY',
       'PENDING',
@@ -246,11 +249,12 @@ export class AttendanceViewsService {
     });
 
     const { end } = monthRange(month);
-    const [document, settingsDocument, holidays, branches] = await Promise.all([
+    const [document, settingsDocument, holidays, branches, leaveTypes] = await Promise.all([
       this.dependencies.store.getAttendance(id),
       this.dependencies.store.getCompanySettings(),
       this.dependencies.store.listHolidays(`${month}-01`, end),
       this.dependencies.branches.listBranches(),
+      this.dependencies.store.listLeaveTypes(),
     ]);
     const built = buildMonthCalendar({
       month,
@@ -260,6 +264,7 @@ export class AttendanceViewsService {
       days: document?.days ?? {},
       holidays: holidayMapOf(holidays.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null))),
       weeklyOffDays: attendanceSettingsFromDocument(settingsDocument).weeklyOffDays,
+      leaveTypeNames: leaveTypeNameMap(leaveTypes),
     });
     return addBranchNames(
       built.days.find((day) => day.date === input.date)!,
@@ -353,12 +358,13 @@ export class AttendanceViewsService {
   ): Promise<Array<{ employee: EmployeeRecord; days: DayEntry[]; summary: CalendarSummary }>> {
     const { start, end } = monthRange(month);
     const today = istDateOf(now);
-    const [settingsDocument, holidays, attendanceDocuments] = await Promise.all([
+    const [settingsDocument, holidays, attendanceDocuments, leaveTypes] = await Promise.all([
       this.dependencies.store.getCompanySettings(),
       this.dependencies.store.listHolidays(start, end),
       this.dependencies.store.getAttendanceDocuments(
         employees.map((employee) => attendanceId(month, requireUid(employee))),
       ),
+      this.dependencies.store.listLeaveTypes(),
     ]);
     const settings = attendanceSettingsFromDocument(settingsDocument);
     return employees.map((employee) => {
@@ -371,6 +377,7 @@ export class AttendanceViewsService {
         days: attendanceDocuments.get(attendanceId(month, id))?.days ?? {},
         holidays: holidayMapOf(holidays.filter((holiday) => holidayAppliesToBranch(holiday, employee.primaryBranchId ?? null))),
         weeklyOffDays: settings.weeklyOffDays,
+        leaveTypeNames: leaveTypeNameMap(leaveTypes),
       });
       return { employee, ...calendar };
     });
@@ -511,6 +518,10 @@ function stringOrNull(value: unknown): string | null {
 
 function holidayMapOf(holidays: HolidayRecord[]): Record<string, string> {
   return holidayNameMap(holidays);
+}
+
+function leaveTypeNameMap(types: Array<{ id: string; name: string }>): Record<string, string> {
+  return Object.fromEntries(types.map(({ id, name }) => [id, name]));
 }
 
 function branchNameMap(branches: AttendanceBranch[]): Map<string, string> {

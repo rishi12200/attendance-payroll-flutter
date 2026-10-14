@@ -4,6 +4,7 @@ import type {
   PayrollMonthDocument,
 } from './attendance-store';
 import type { HolidayRecord } from './holiday-service';
+import type { LeaveTypeRecord } from './leave-type-service';
 
 export interface AttendanceEditAudit {
   action: 'attendance.edit';
@@ -43,6 +44,7 @@ export interface AttendanceViewsStore {
   ): Promise<Map<string, AttendanceDocument>>;
   getPayrollMonth(month: string): Promise<PayrollMonthDocument | undefined>;
   listHolidays(fromDate: string, toDate: string): Promise<HolidayRecord[]>;
+  listLeaveTypes(): Promise<LeaveTypeRecord[]>;
   listAllHolidays(): Promise<import('../domain/holidays').HolidayInput[]>;
   listHolidayBranches(): Promise<Array<{ id: string; state: string; status: string }>>;
   getEmployeeBranch(uid: string): Promise<string | null>;

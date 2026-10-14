@@ -14,6 +14,7 @@ import type { HolidayRecord } from './holiday-service';
 import { HolidayService } from './holiday-service';
 import type { SettingsStore } from './settings-service';
 import { SettingsService } from './settings-service';
+import type { LeaveTypeRecord } from './leave-type-service';
 import type {
   AttendanceEditAudit,
   AttendanceEditTransaction,
@@ -71,6 +72,11 @@ class FakeViewsStore implements AttendanceViewsStore, SettingsStore {
   readonly payrollMonths = new Map<string, PayrollMonthDocument>();
   readonly holidays = new Map<string, HolidayRecord>();
   readonly checkins: FlaggedCheckinRecord[] = [];
+  readonly leaveTypes: LeaveTypeRecord[] = [{
+    id: 'annual', name: 'Annual Leave', code: 'AL', paid: true,
+    annualQuotaDays: 18, allowHalfDay: true, status: 'active', system: false, sortOrder: 1,
+  }];
+  leaveTypeReads = 0;
   readonly audits: AttendanceEditAudit[] = [];
   readonly events: string[] = [];
 
@@ -109,6 +115,8 @@ class FakeViewsStore implements AttendanceViewsStore, SettingsStore {
       .filter((holiday) => holiday !== undefined && holiday.date! >= fromDate && holiday.date! <= toDate)
       .sort((left, right) => left!.date!.localeCompare(right!.date!)) as HolidayRecord[];
   }
+
+  async listLeaveTypes() { this.leaveTypeReads += 1; return this.leaveTypes; }
 
   async listAllHolidays() { return [...this.holidays.values()]; }
   async listHolidayBranches() { return [{ id: 'branch-1', state: 'Tamil Nadu', status: 'active' }, { id: 'branch-2', state: 'Kerala', status: 'active' }]; }
@@ -514,6 +522,66 @@ test('calendar and summaries enforce employee ownership and include branch names
   assert.equal((own as Record<string, unknown>).empId, 'emp-1');
   const all = await views.getSummary(admin, '2026-10');
   assert.equal((all as Array<unknown>).length, 2);
+});
+
+test('calendar names leave types and reads the type list once for a multi-employee summary', async () => {
+  const { store, views } = service();
+  store.leaveTypes.push({
+    id: 'unpaid', name: 'Unpaid Leave', code: 'UL', paid: false,
+    annualQuotaDays: null, allowHalfDay: true, status: 'active', system: true, sortOrder: 2,
+  });
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10', days: {
+      '2026-10-05': { status: 'L', leaveTypeId: 'annual' },
+      '2026-10-06': { status: 'UL', leaveTypeId: 'unpaid' },
+      '2026-10-07': { halfLeave: {
+        session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'half-1',
+      } },
+    },
+  });
+  const calendar = await views.getMyCalendar(employeeCaller, '2026-10');
+  const days = calendar.days as Array<Record<string, unknown>>;
+  assert.equal(days[4]?.leaveTypeName, 'Annual Leave');
+  assert.equal(days[5]?.leaveTypeName, 'Unpaid Leave');
+  assert.equal(days[6]?.status, 'HL');
+  assert.equal((days[6]?.halfLeave as Record<string, unknown>).leaveTypeName, 'Annual Leave');
+  assert.equal(store.leaveTypeReads, 1);
+
+  store.leaveTypeReads = 0;
+  await views.getSummary(admin, '2026-10');
+  assert.equal(store.leaveTypeReads, 1);
+});
+
+test('by-date rows and totals include HL marker-only days', async () => {
+  const { store, views } = service();
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10', days: {
+      '2026-10-09': { halfLeave: {
+        session: 'second_half', paid: false, leaveTypeId: 'unpaid', leaveRequestId: 'half-2',
+      } },
+    },
+  });
+  const result = await views.getByDate(admin, '2026-10-09');
+  const rows = result.rows as Array<Record<string, unknown>>;
+  const row = rows.find((item) => item.empId === 'emp-1')!;
+  assert.equal(row.status, 'HL');
+  assert.equal(row.otherHalf, 'absent');
+  assert.equal(result.totals.HL, 1);
+  assert.equal(store.leaveTypeReads, 1);
+});
+
+test('admin edit preserves a marker-only day and does not require its prior status', async () => {
+  const { store, views } = service();
+  const marker = { session: 'first_half', paid: true, leaveTypeId: 'annual', leaveRequestId: 'half-3' };
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10', days: { '2026-10-09': { halfLeave: marker } },
+  });
+  const edited = await views.editAttendance({
+    caller: admin, empId: 'emp-1', date: '2026-10-09', status: 'A', reason: 'Absence edit',
+  });
+  assert.equal(edited.status, 'HL');
+  assert.deepEqual(store.attendance.get('2026-10_emp-1')?.days['2026-10-09']?.halfLeave, marker);
+  assert.equal(store.attendance.get('2026-10_emp-1')?.days['2026-10-09']?.status, 'A');
 });
 
 test('admin edits all statuses transactionally and clears punches for non-punch statuses', async () => {

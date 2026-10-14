@@ -9,6 +9,7 @@ import type {
   PayrollMonthDocument,
 } from './attendance-store';
 import type { HolidayRecord } from './holiday-service';
+import type { LeaveTypeRecord } from './leave-type-service';
 import { normalizeHoliday, type HolidayInput } from '../domain/holidays';
 import type {
   AttendanceEditAudit,
@@ -63,6 +64,11 @@ export class FirestoreAttendanceViewsStore implements AttendanceViewsStore {
 
   async listHolidays(fromDate: string, toDate: string): Promise<HolidayRecord[]> {
     return (await this.listAllHolidays()).filter((holiday) => String(holiday.date) >= fromDate && String(holiday.date) <= toDate) as HolidayRecord[];
+  }
+
+  async listLeaveTypes(): Promise<LeaveTypeRecord[]> {
+    const snapshot = await this.firestore.collection('leave_types').limit(100).get();
+    return snapshot.docs.map((document) => ({ ...document.data(), id: document.id }) as LeaveTypeRecord);
   }
 
   async listAllHolidays(): Promise<HolidayInput[]> {
