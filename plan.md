@@ -493,6 +493,7 @@ Flutter:
 - [x] Leave tab: Balance section (data cards per type)
 - [x] Admin Settings: Leave types screen. Decision sheet shows the type, session and balance, without a paid or unpaid choice.
 - [x] Calendars show half-day leave with session and type
+- [x] Admin employee details include an employee-only Leave section with balance, request history/decisions, calendar link and branch holidays
 - [ ] **Done when:** an employee applies for Sick Leave and sees the balance drop, a half-day request shows 0.5 on the balance and in the calendar, an over-quota request is blocked, paid types add no LOP and unpaid types do, and an admin can add a new leave type that employees immediately see
 
 ### Step 7: Payroll
