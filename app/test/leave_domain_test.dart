@@ -18,7 +18,8 @@ void main() {
         'updatedAt': '2026-10-08T10:00:00.000Z',
       });
       expect(request.status, LeaveStatus.pending);
-      expect(request.leaveType, isNull);
+      expect(request.leaveTypeId, isNull);
+      expect(request.leaveTypeName, isNull);
       expect(request.decidedBy, isNull);
       expect(request.writtenDates, isEmpty);
       expect(request.skippedDates, isEmpty);
@@ -50,7 +51,9 @@ void main() {
       'empCode': 'EMP001',
       'designation': 'Associate',
     });
-    expect(request.leaveType, LeaveType.paid);
+    expect(request.leaveTypeId, isNull);
+    expect(request.leaveTypeName, 'Paid Leave');
+    expect(request.paid, isTrue);
     expect(request.decidedBy, isNull);
     expect(request.writtenDates, ['2026-10-12']);
     expect(request.skippedDates.single.reason, 'holiday');
@@ -83,6 +86,8 @@ void main() {
     expect(skippedReasonLabel('weekly_off'), 'Sunday / weekly off');
     expect(skippedReasonLabel('holiday'), 'Holiday');
     expect(skippedReasonLabel('has_punch'), 'Already has attendance');
+    expect(skippedReasonLabel('already_on_leave'), 'Already on leave');
+    expect(skippedReasonLabel('half_day_marked'), 'Half day already marked');
     expect(
       skippedReasonLabel('outside_employment'),
       'Outside employment dates',

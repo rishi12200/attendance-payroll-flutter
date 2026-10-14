@@ -22,9 +22,18 @@ String skippedReasonLabel(String reason) => switch (reason) {
   'weekly_off' => 'Sunday / weekly off',
   'holiday' => 'Holiday',
   'has_punch' => 'Already has attendance',
+  'already_on_leave' => 'Already on leave',
+  'half_day_marked' => 'Half day already marked',
   'outside_employment' => 'Outside employment dates',
   _ => 'Skipped',
 };
+
+String leaveTypeDisplayName({String? name, String? id}) =>
+    name?.trim().isNotEmpty == true
+    ? name!.trim()
+    : id == null
+    ? 'No type (old request)'
+    : 'Leave type';
 
 DateTime _parseDate(String value) {
   final parts = value.split('-');

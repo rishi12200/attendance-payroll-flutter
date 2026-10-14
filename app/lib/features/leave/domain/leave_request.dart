@@ -1,6 +1,6 @@
-enum LeaveStatus { pending, approved, rejected, cancelled }
+import 'leave_type.dart';
 
-enum LeaveType { paid, unpaid }
+enum LeaveStatus { pending, approved, rejected, cancelled }
 
 class SkippedDate {
   const SkippedDate({required this.date, required this.reason});
@@ -24,7 +24,13 @@ class LeaveRequest {
     required this.status,
     required this.createdAt,
     required this.updatedAt,
-    this.leaveType,
+    this.leaveTypeId,
+    this.leaveTypeName,
+    this.paid,
+    this.session = 'full',
+    this.requestedDays,
+    this.writtenDays,
+    this.requestedDates = const [],
     this.decidedBy,
     this.decidedAt,
     this.decisionNote,
@@ -44,7 +50,13 @@ class LeaveRequest {
   final LeaveStatus status;
   final String createdAt;
   final String updatedAt;
-  final LeaveType? leaveType;
+  final String? leaveTypeId;
+  final String? leaveTypeName;
+  final bool? paid;
+  final String session;
+  final double? requestedDays;
+  final double? writtenDays;
+  final List<String> requestedDates;
   final String? decidedBy;
   final String? decidedAt;
   final String? decisionNote;
@@ -60,10 +72,19 @@ class LeaveRequest {
     final status = LeaveStatus.values
         .where((value) => value.name == statusValue)
         .firstOrNull;
-    final leaveTypeValue = _string(json['leaveType']);
-    final leaveType = LeaveType.values
-        .where((value) => value.name == leaveTypeValue)
-        .firstOrNull;
+    final legacyType = _string(json['leaveType']);
+    final paid = json['paid'] is bool
+        ? json['paid'] as bool
+        : legacyType == 'paid'
+        ? true
+        : legacyType == 'unpaid'
+        ? false
+        : null;
+    final legacyName = legacyType == 'paid'
+        ? 'Paid Leave'
+        : legacyType == 'unpaid'
+        ? 'Unpaid Leave'
+        : null;
     return LeaveRequest(
       id: _string(json['id']) ?? '',
       empId: _string(json['empId']) ?? '',
@@ -73,7 +94,13 @@ class LeaveRequest {
       status: status ?? LeaveStatus.pending,
       createdAt: _string(json['createdAt']) ?? '',
       updatedAt: _string(json['updatedAt']) ?? '',
-      leaveType: leaveType,
+      leaveTypeId: _string(json['leaveTypeId']),
+      leaveTypeName: _string(json['leaveTypeName']) ?? legacyName,
+      paid: paid,
+      session: _string(json['session']) ?? 'full',
+      requestedDays: parseNullableDecimal(json['requestedDays']),
+      writtenDays: parseNullableDecimal(json['writtenDays']),
+      requestedDates: _stringList(json['requestedDates']),
       decidedBy: _string(json['decidedBy']),
       decidedAt: _string(json['decidedAt']),
       decisionNote: _string(json['decisionNote']),
