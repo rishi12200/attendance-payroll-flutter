@@ -53,6 +53,7 @@ class _FakeLeaveRepository implements LeaveRepository {
   int applyCalls = 0;
   int decideCalls = 0;
   int balanceCalls = 0;
+  int leaveTypeCalls = 0;
   String? lastStatus;
   String? lastEmpId;
   int? lastAdminCount;
@@ -96,6 +97,7 @@ class _FakeLeaveRepository implements LeaveRepository {
   LeaveRequest? decisionResult;
   Completer<List<LeaveRequest>>? mineCompleter;
   Completer<List<LeaveRequest>>? adminCompleter;
+  Completer<LeaveBalance>? balanceCompleter;
   String? lastAppliedType;
   String? lastSession;
   String? lastNote;
@@ -185,6 +187,7 @@ class _FakeLeaveRepository implements LeaveRepository {
 
   @override
   Future<List<LeaveType>> listLeaveTypes({String status = 'all'}) async {
+    leaveTypeCalls++;
     if (typeError != null) throw typeError!;
     return availableTypes
         .where((item) => status == 'all' || item.status == status)
@@ -197,6 +200,7 @@ class _FakeLeaveRepository implements LeaveRepository {
     lastBalanceYear = year;
     lastBalanceEmpId = empId;
     if (balanceError != null) throw balanceError!;
+    if (balanceCompleter != null) return balanceCompleter!.future;
     final selectedYear = year ?? 2026;
     return LeaveBalance(
       year: selectedYear,
@@ -637,21 +641,34 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Balance'));
       await tester.pumpAndSettle();
-      expect(find.text('Remaining leave days'), findsOneWidget);
-      expect(find.text('2026'), findsNWidgets(2));
+      expect(find.text('2026'), findsOneWidget);
+      expect(find.text('days left'), findsOneWidget);
+      expect(find.text('6.5'), findsOneWidget);
       expect(find.text('6.5 days'), findsOneWidget);
-      expect(find.text('Days left after pending requests.'), findsOneWidget);
       expect(find.textContaining('%'), findsNothing);
       expect(
-        find.text('Not in the chart: Unpaid Leave (no limit)'),
+        find.text('Types with no limit are not shown in this chart.'),
         findsOneWidget,
       );
       expect(
         find.text('Pending requests are reserved from your balance.'),
         findsOneWidget,
       );
+      final donutRect = tester.getRect(
+        find.byKey(const ValueKey('remaining-leave-donut')),
+      );
+      final yearButtonRect = tester.getRect(
+        find.byTooltip('Previous leave year'),
+      );
+      expect(donutRect.top, greaterThan(yearButtonRect.bottom));
+      expect(repository.balanceCalls, 1);
+      expect(repository.leaveTypeCalls, 0);
       await tester.ensureVisible(find.text('Quota: 8 days'));
       await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const ValueKey('remaining-leave-donut'))).top,
+        lessThan(tester.getTopLeft(find.text('Quota: 8 days')).dy),
+      );
       expect(find.text('Quota: 8 days'), findsOneWidget);
       expect(find.text('Used: 1 day'), findsOneWidget);
       expect(find.text('Pending: 0.5 day'), findsOneWidget);
@@ -667,14 +684,18 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Previous leave year'));
       await tester.pumpAndSettle();
-      expect(find.text('2025'), findsNWidgets(2));
-      expect(find.text('Remaining leave days'), findsOneWidget);
+      expect(find.text('2025'), findsOneWidget);
+      expect(repository.lastBalanceYear, 2025);
+      expect(repository.balanceCalls, 2);
+      expect(find.text('days left'), findsOneWidget);
       await tester.tap(find.byTooltip('Previous leave year'));
       await tester.pumpAndSettle();
-      expect(find.text('2025'), findsNWidgets(2));
+      expect(find.text('2025'), findsOneWidget);
+      expect(repository.balanceCalls, 2);
       await tester.tap(find.byTooltip('Next leave year'));
       await tester.pumpAndSettle();
-      expect(find.text('2026'), findsNWidgets(2));
+      expect(find.text('2026'), findsOneWidget);
+      expect(repository.balanceCalls, 3);
     },
   );
 
@@ -694,6 +715,61 @@ void main() {
       find.textContaining('Unpaid Leave · UL · Unpaid · No limit'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('balance loading and error states do not show the donut', (
+    tester,
+  ) async {
+    final pendingRepository = _FakeLeaveRepository()
+      ..balanceCompleter = Completer<LeaveBalance>();
+    await tester.pumpWidget(
+      _app(const MyLeaveRequestsScreen(), pendingRepository),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Balance'));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byKey(const ValueKey('remaining-leave-donut')), findsNothing);
+    pendingRepository.balanceCompleter!.complete(
+      LeaveBalance(
+        year: 2026,
+        label: '2026',
+        startDate: '2026-01-01',
+        endDate: '2026-12-31',
+        today: '2026-06-01',
+        types: [
+          const BalanceType(
+            leaveTypeId: 'sick',
+            name: 'Sick Leave',
+            code: 'SL',
+            paid: true,
+            allowHalfDay: true,
+            quota: 8,
+            used: 0,
+            pending: 0,
+            remaining: 8,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('remaining-leave-donut')), findsOneWidget);
+
+    final errorRepository = _FakeLeaveRepository()
+      ..balanceError = const AppException(
+        code: 'BALANCE_FAILURE',
+        message: 'Balance unavailable',
+        details: {},
+      );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(
+      _app(const MyLeaveRequestsScreen(), errorRepository),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Balance'));
+    await tester.pumpAndSettle();
+    expect(find.text('Balance unavailable'), findsOneWidget);
+    expect(find.byKey(const ValueKey('remaining-leave-donut')), findsNothing);
   });
 
   testWidgets('half-day session is available for one date and applies as 0.5', (
@@ -1123,7 +1199,7 @@ void main() {
     expect(find.text('Leave'), findsOneWidget);
     await tester.tap(find.text('Leave'));
     await tester.pumpAndSettle();
-    expect(find.text('Remaining leave days'), findsNothing);
+    expect(find.byKey(const ValueKey('remaining-leave-donut')), findsNothing);
     expect(leave.lastBalanceEmpId, 'emp-1');
     expect(leave.lastEmpId, 'emp-1');
     expect(find.textContaining('6.5 days'), findsOneWidget);
