@@ -6,6 +6,7 @@ import '../../../core/api/app_exception.dart';
 import '../data/leave_providers.dart';
 import '../domain/leave_helpers.dart';
 import '../domain/leave_request.dart';
+import '../domain/leave_type.dart';
 import 'employee_holidays_section.dart';
 
 const _filters = <String, String>{
@@ -56,6 +57,7 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
     if (confirmed != true || !mounted) return;
     try {
       await ref.read(leaveRepositoryProvider).cancel(request.id);
+      ref.invalidate(leaveBalanceProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -99,7 +101,8 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
             child: SegmentedButton<int>(
               segments: const [
                 ButtonSegment(value: 0, label: Text('Requests')),
-                ButtonSegment(value: 1, label: Text('Holidays')),
+                ButtonSegment(value: 1, label: Text('Balance')),
+                ButtonSegment(value: 2, label: Text('Holidays')),
               ],
               selected: {_section},
               onSelectionChanged: (selection) =>
@@ -108,6 +111,8 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
           ),
           if (_section == 0)
             Expanded(child: _requestsPane())
+          else if (_section == 1)
+            const Expanded(child: _BalancePane())
           else
             const Expanded(child: EmployeeHolidaysSection()),
         ],
@@ -199,26 +204,33 @@ class _LeaveCard extends StatelessWidget {
                 _StatusChip(status: request.status),
               ],
             ),
-            Text('${leaveDayCount(request.fromDate, request.toDate)} days'),
+            Text(
+              pluralDays(
+                request.requestedDays ??
+                    leaveDayCount(request.fromDate, request.toDate).toDouble(),
+              ),
+            ),
+            Text(
+              '${leaveTypeDisplayName(name: request.leaveTypeName, id: request.leaveTypeId)} · ${sessionLabel(request.session)}',
+            ),
+            if (request.paid != null)
+              Chip(label: Text(paidLabel(request.paid!))),
             const SizedBox(height: 8),
             Text(request.reason),
             if (request.status == LeaveStatus.approved) ...[
               const SizedBox(height: 8),
               Text(
-                request.leaveType == LeaveType.paid
-                    ? 'Paid leave'
-                    : 'Unpaid leave',
+                '${pluralDays(request.writtenDays ?? request.writtenDates.length.toDouble())} applied, ${request.skippedDates.length} skipped',
               ),
-              Text(
-                '${request.writtenDates.length} days applied, ${request.skippedDates.length} skipped',
-              ),
-              if ((request.decisionNote ?? '').isNotEmpty)
-                Text('Admin note: ${request.decisionNote}'),
             ] else if (request.status == LeaveStatus.rejected &&
                 (request.decisionNote ?? '').isNotEmpty) ...[
               const SizedBox(height: 8),
               Text('Admin note: ${request.decisionNote}'),
             ],
+            if (request.status != LeaveStatus.pending &&
+                request.status != LeaveStatus.rejected &&
+                (request.decisionNote ?? '').isNotEmpty)
+              Text('Admin note: ${request.decisionNote}'),
             if (request.status == LeaveStatus.pending)
               Align(
                 alignment: Alignment.centerRight,
@@ -268,12 +280,18 @@ void _showLeaveDetails(
             style: Theme.of(context).textTheme.titleLarge,
           ),
           Text(
-            '${leaveDayCount(request.fromDate, request.toDate)} days · ${request.reason}',
+            '${pluralDays(request.requestedDays ?? leaveDayCount(request.fromDate, request.toDate).toDouble())} · ${request.reason}',
           ),
+          Text(
+            '${leaveTypeDisplayName(name: request.leaveTypeName, id: request.leaveTypeId)} · ${sessionLabel(request.session)}',
+          ),
+          if (request.paid != null) Text(paidLabel(request.paid!)),
           Text('Status: ${request.status.name}'),
           if (request.writtenDates.isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text('Days applied'),
+            Text(
+              'Days applied (${formatDays(request.writtenDays ?? request.writtenDates.length.toDouble())})',
+            ),
             ...request.writtenDates.map(
               (date) => ListTile(
                 dense: true,
@@ -304,6 +322,132 @@ void _showLeaveDetails(
     ),
   ),
 );
+
+class _BalancePane extends ConsumerStatefulWidget {
+  const _BalancePane();
+  @override
+  ConsumerState<_BalancePane> createState() => _BalancePaneState();
+}
+
+class _BalancePaneState extends ConsumerState<_BalancePane> {
+  int? _year;
+  int? _anchorYear;
+
+  Future<void> _refresh() async {
+    final key = (year: _year, empId: null);
+    ref.invalidate(leaveBalanceProvider(key));
+    await ref.read(leaveBalanceProvider(key).future);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = (year: _year, empId: null);
+    final balance = ref.watch(leaveBalanceProvider(key));
+    return balance.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => ListView(
+        children: [
+          const SizedBox(height: 120),
+          Center(
+            child: Text(
+              error is AppException
+                  ? error.message
+                  : 'Could not load balances.',
+            ),
+          ),
+          Center(
+            child: TextButton(
+              onPressed: () => ref.invalidate(leaveBalanceProvider(key)),
+              child: const Text('Retry'),
+            ),
+          ),
+        ],
+      ),
+      data: (value) {
+        _anchorYear ??= value.year;
+        _year ??= value.year;
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Previous leave year',
+                    onPressed: _year! > _anchorYear! - 1
+                        ? () => setState(() => _year = _year! - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                  ),
+                  Expanded(
+                    child: Text(
+                      value.label,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Next leave year',
+                    onPressed: _year! < _anchorYear! + 1
+                        ? () => setState(() => _year = _year! + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('Pending requests are reserved from your balance.'),
+              ),
+              if (value.types.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: Center(child: Text('No leave balances to show.')),
+                ),
+              for (final item in value.types) _BalanceCard(item: item),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({required this.item});
+  final BalanceType item;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${item.name} (${item.code})',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Chip(label: Text(paidLabel(item.paid))),
+            ],
+          ),
+          Text(
+            'Quota: ${item.quota == null ? 'No limit' : pluralDays(item.quota!)}',
+          ),
+          Text('Used: ${pluralDays(item.used)}'),
+          Text('Pending: ${pluralDays(item.pending)}'),
+          Text(
+            'Remaining: ${item.remaining == null ? 'No limit' : pluralDays(item.remaining!)}',
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 class _ErrorView extends StatelessWidget {
   const _ErrorView({required this.error, required this.onRetry});
