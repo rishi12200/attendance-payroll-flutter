@@ -75,6 +75,8 @@ class FakeLeaveStore implements LeaveStore {
   async getEmployee(uid: string) {
     return this.employees.get(uid);
   }
+  async getCompanySettings() { return this.settings; }
+  async listLeaveTypes() { return [...this.types.values()]; }
 
   async runTransaction<T>(work: (transaction: LeaveTransaction) => Promise<T>): Promise<T> {
     const previous = this.tail;
@@ -605,4 +607,51 @@ test('approval uses the current paid flag and rechecks quota against approved le
   });
   await expectError(quota.leaves.decide({ caller: admin, id: waiting.id, decision: 'approved' }), 422, 'QUOTA_EXCEEDED');
   assert.equal(quota.store.attendance.size, 0);
+});
+
+test('balances enforce employee and admin scope and include inactive and legacy used types', async () => {
+  const { store, leaves } = service();
+  store.settings = { weeklyOffDays: [], leaveYearStartMonth: 4 };
+  store.types.set('casual', {
+    ...store.types.get('annual')!, id: 'casual', name: 'Casual Leave', code: 'CL',
+    status: 'inactive', annualQuotaDays: 8,
+  });
+  store.types.set('legacy-paid', {
+    ...store.types.get('annual')!, id: 'legacy-paid', name: 'Paid Leave (legacy)', code: 'PL',
+    status: 'inactive', system: true, annualQuotaDays: null,
+  });
+  store.seedRequest({
+    id: 'annual-approved', fromDate: '2025-05-01', toDate: '2025-05-01', status: 'approved',
+    leaveTypeId: 'annual', session: 'first_half', writtenDates: ['2025-05-01'],
+  });
+  store.seedRequest({
+    id: 'casual-pending', fromDate: '2025-06-01', toDate: '2025-06-01', status: 'pending',
+    leaveTypeId: 'casual', session: 'full', requestedDates: ['2025-06-01'],
+  });
+  store.seedRequest({
+    id: 'legacy-paid', fromDate: '2025-07-01', toDate: '2025-07-01', status: 'approved',
+    leaveType: 'paid', writtenDates: ['2025-07-01'],
+  });
+  const balance = await leaves.getBalance(empCaller, { year: 2025 });
+  assert.deepEqual([balance.year, balance.label, balance.startDate, balance.endDate], [
+    2025, 'Apr 2025 - Mar 2026', '2025-04-01', '2026-03-31',
+  ]);
+  const types = balance.types as Array<Record<string, unknown>>;
+  assert.equal(types.find((type) => type.leaveTypeId === 'annual')?.used, 0.5);
+  assert.equal(types.find((type) => type.leaveTypeId === 'casual')?.pending, 1);
+  assert.equal(types.find((type) => type.leaveTypeId === 'casual')?.remaining, 7);
+  assert.equal(types.find((type) => type.leaveTypeId === 'legacy-paid')?.used, 1);
+  await expectError(leaves.getBalance(empCaller, { empId: 'emp-2' }), 403, 'FORBIDDEN');
+  await expectError(leaves.getBalance(admin, {}), 403, 'FORBIDDEN');
+  await expectError(leaves.getBalance(admin, { empId: 'missing' }), 404, 'EMPLOYEE_NOT_FOUND');
+  assert.equal((await leaves.getBalance(admin, { empId: 'emp-1', year: 2025 })).year, 2025);
+});
+
+test('balance defaults to the current leave year and caps request reads at 500', async () => {
+  const { store, leaves } = service();
+  store.settings = { weeklyOffDays: [], leaveYearStartMonth: 4 };
+  const balance = await leaves.getBalance(empCaller, {});
+  assert.equal(balance.year, new Date().getUTCFullYear());
+  assert.equal(store.listLimit, 500);
+  await expectError(leaves.getBalance(empCaller, { year: 2101 }), 400, 'VALIDATION_ERROR');
 });

@@ -15,7 +15,7 @@ import type {
 } from './leave-store';
 import type { LeaveTypeRecord } from './leave-type-service';
 
-const MAX_LIST_READS = 200;
+const MAX_LIST_READS = 500;
 
 export class FirestoreLeaveStore implements LeaveStore {
   constructor(private readonly firestore: Firestore) {}
@@ -51,6 +51,16 @@ export class FirestoreLeaveStore implements LeaveStore {
     return snapshot.exists
       ? ({ ...snapshot.data(), uid: snapshot.id } as EmployeeRecord)
       : undefined;
+  }
+
+  async getCompanySettings(): Promise<Record<string, unknown> | undefined> {
+    const snapshot = await this.firestore.collection('settings').doc('company').get();
+    return snapshot.exists ? snapshot.data() : undefined;
+  }
+
+  async listLeaveTypes() {
+    const snapshot = await this.firestore.collection('leave_types').limit(100).get();
+    return snapshot.docs.map((document) => ({ ...document.data(), id: document.id }) as import('./leave-type-service').LeaveTypeRecord);
   }
 
   runTransaction<T>(work: (transaction: LeaveTransaction) => Promise<T>): Promise<T> {

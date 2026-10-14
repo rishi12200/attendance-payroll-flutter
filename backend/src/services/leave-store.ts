@@ -64,5 +64,7 @@ export interface LeaveStore {
     limit: number;
   }): Promise<LeaveRequestRecord[]>;
   getEmployee(uid: string): Promise<EmployeeRecord | undefined>;
+  getCompanySettings(): Promise<Record<string, unknown> | undefined>;
+  listLeaveTypes(): Promise<LeaveTypeRecord[]>;
   runTransaction<T>(work: (transaction: LeaveTransaction) => Promise<T>): Promise<T>;
 }

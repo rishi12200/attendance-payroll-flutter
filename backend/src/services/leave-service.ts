@@ -15,6 +15,8 @@ import type {
 } from './leave-store';
 import { holidayAppliesToBranch } from '../domain/holidays';
 import { computeBalances, countRequestedDates, dayWeight, splitByLeaveYear, wouldExceedQuota, type LeaveSession } from '../domain/leave-quantity';
+import { leaveYearByYear, leaveYearOf } from '../domain/leave-year';
+import { todayIST } from '../domain/dates';
 
 const MAX_LIST_READS = 200;
 const activeStatuses = new Set<LeaveStatus>(['pending', 'approved']);
@@ -36,6 +38,66 @@ export type LeaveDto = Pick<LeaveRequestRecord,
 
 export class LeaveService {
   constructor(private readonly store: LeaveStore) {}
+
+  async getBalance(caller: LeaveCaller, input: { year?: number; empId?: string }): Promise<Record<string, unknown>> {
+    if (caller.role !== 'employee' && caller.role !== 'admin') throw this.forbidden();
+    let empId: string;
+    if (caller.role === 'employee') {
+      if (input.empId !== undefined && input.empId !== caller.uid) throw this.forbidden();
+      await this.requireActiveEmployee(caller);
+      empId = caller.uid;
+    } else {
+      if (!input.empId) throw new AppError(403, 'FORBIDDEN', 'Admin accounts must select an employee to view leave balances.');
+      const employee = await this.store.getEmployee(input.empId);
+      if (!employee || employee.role !== 'employee') {
+        throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee was not found.');
+      }
+      empId = input.empId;
+    }
+    if (input.year !== undefined && (!Number.isInteger(input.year) || input.year < 2000 || input.year > 2100)) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Leave balance year must be from 2000 to 2100.');
+    }
+    const [settingsDocument, types, requests] = await Promise.all([
+      this.store.getCompanySettings(),
+      this.store.listLeaveTypes(),
+      this.store.listLeaveRequests({ empId, limit: 500 }),
+    ]);
+    const settings = attendanceSettingsFromDocument(settingsDocument);
+    const today = todayIST();
+    const currentYear = leaveYearOf(today, settings.leaveYearStartMonth).year;
+    const year = input.year ?? currentYear;
+    const yearDetails = leaveYearByYear(year, settings.leaveYearStartMonth);
+    const balances = computeBalances({
+      types,
+      requests,
+      yearStartDate: yearDetails.startDate,
+      yearEndDate: yearDetails.endDate,
+    });
+    const balanceById = new Map(balances.map((balance) => [balance.leaveTypeId, balance]));
+    const visibleTypes = types
+      .filter((type) => {
+        const balance = balanceById.get(type.id);
+        return (type.status === 'active' && type.id !== 'legacy-paid') ||
+          (balance !== undefined && (balance.used > 0 || balance.pending > 0));
+      })
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name))
+      .map((type) => {
+        const balance = balanceById.get(type.id)!;
+        return {
+          leaveTypeId: type.id,
+          name: type.name,
+          code: type.code,
+          paid: type.paid,
+          allowHalfDay: type.allowHalfDay,
+          quota: balance.quota,
+          used: balance.used,
+          pending: balance.pending,
+          remaining: balance.remaining,
+        };
+      });
+    return { year, label: yearDetails.label, startDate: yearDetails.startDate,
+      endDate: yearDetails.endDate, today, types: visibleTypes };
+  }
 
   async apply(
     caller: LeaveCaller,
