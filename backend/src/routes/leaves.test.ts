@@ -81,7 +81,7 @@ function makeApp() {
 test('leave routes enforce bearer authentication and endpoint roles', async () => {
   const { app } = makeApp();
   const endpoints: Array<[string, RequestInit | undefined, number]> = [
-    ['/leaves', { method: 'POST', headers, body: JSON.stringify({ fromDate: '2026-10-10', toDate: '2026-10-10', reason: 'x' }) }, 403],
+    ['/leaves', { method: 'POST', headers, body: JSON.stringify({ leaveTypeId: 'annual', fromDate: '2026-10-10', toDate: '2026-10-10', reason: 'x' }) }, 403],
     ['/leaves/me', { headers }, 403],
     ['/leaves/leave-1/cancel', { method: 'POST', headers }, 403],
     ['/leaves?status=pending', { headers: employeeHeaders }, 403],
@@ -97,7 +97,7 @@ test('leave routes enforce bearer authentication and endpoint roles', async () =
 
   assert.equal((await request(app, '/leaves', {
     method: 'POST', headers: employeeHeaders,
-    body: JSON.stringify({ fromDate: '2026-10-10', toDate: '2026-10-10', reason: 'x' }),
+    body: JSON.stringify({ leaveTypeId: 'annual', fromDate: '2026-10-10', toDate: '2026-10-10', reason: 'x' }),
   })).status, 201);
   assert.equal((await request(app, '/leaves/me', { headers: employeeHeaders })).status, 200);
   assert.equal((await request(app, '/leaves/leave-1', { headers: employeeHeaders })).status, 200);
@@ -111,8 +111,8 @@ test('leave routes enforce bearer authentication and endpoint roles', async () =
 test('leave routes validate each request part and serialize returned timestamps', async () => {
   const { app, calls } = makeApp();
   const invalid: Array<[string, RequestInit?]> = [
-    ['/leaves', { method: 'POST', headers: employeeHeaders, body: JSON.stringify({ fromDate: '2026-02-30', toDate: '2026-03-01', reason: 'x' }) }],
-    ['/leaves', { method: 'POST', headers: employeeHeaders, body: JSON.stringify({ fromDate: '2026-10-10', toDate: '2026-10-10', reason: 'x', extra: true }) }],
+    ['/leaves', { method: 'POST', headers: employeeHeaders, body: JSON.stringify({ leaveTypeId: 'annual', fromDate: '2026-02-30', toDate: '2026-03-01', reason: 'x' }) }],
+    ['/leaves', { method: 'POST', headers: employeeHeaders, body: JSON.stringify({ leaveTypeId: 'annual', fromDate: '2026-10-10', toDate: '2026-10-10', reason: 'x', extra: true }) }],
     ['/leaves/me?status=unknown', { headers: employeeHeaders }],
     ['/leaves?status=unknown', { headers }],
     ['/leaves?extra=x', { headers }],
@@ -128,7 +128,7 @@ test('leave routes validate each request part and serialize returned timestamps'
 
   const created = await request(app, '/leaves', {
     method: 'POST', headers: employeeHeaders,
-    body: JSON.stringify({ fromDate: '2026-10-10', toDate: '2026-10-10', reason: '  personal  ' }),
+    body: JSON.stringify({ leaveTypeId: 'annual', fromDate: '2026-10-10', toDate: '2026-10-10', reason: '  personal  ' }),
   });
   assert.equal(created.status, 201);
   assert.equal(created.body.createdAt, '2026-10-08T10:00:00.000Z');

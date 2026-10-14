@@ -9,9 +9,11 @@ export const leaveParamsSchema = z.strictObject({
 });
 
 export const leaveApplyBodySchema = z.strictObject({
+  leaveTypeId: z.string().trim().min(1),
   fromDate: date,
   toDate: date,
   reason: z.string().trim().min(1).max(200),
+  session: z.enum(['full', 'first_half', 'second_half']).default('full'),
 });
 
 export const leaveMeQuerySchema = z.strictObject({

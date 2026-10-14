@@ -11,11 +11,12 @@ import {
 test('leave application trims and validates inputs and rejects unknown keys', () => {
   assert.deepEqual(
     leaveApplyBodySchema.parse({
+      leaveTypeId: 'annual',
       fromDate: '2026-10-10',
       toDate: '2026-10-12',
       reason: '  Family event  ',
     }),
-    { fromDate: '2026-10-10', toDate: '2026-10-12', reason: 'Family event' },
+    { leaveTypeId: 'annual', fromDate: '2026-10-10', toDate: '2026-10-12', reason: 'Family event', session: 'full' },
   );
   assert.equal(leaveApplyBodySchema.safeParse({
     fromDate: '2026-02-30', toDate: '2026-03-01', reason: 'x',

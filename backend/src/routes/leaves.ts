@@ -14,7 +14,7 @@ import {
 export interface LeaveOperations {
   apply(
     caller: { uid: string; role: string },
-    input: { fromDate: string; toDate: string; reason: string },
+    input: { leaveTypeId: string; fromDate: string; toDate: string; reason: string; session: 'full' | 'first_half' | 'second_half' },
   ): Promise<unknown>;
   listMine(caller: { uid: string; role: string }, status?: string): Promise<unknown>;
   listAll(
