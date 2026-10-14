@@ -13,6 +13,7 @@ import type {
   LeaveStore,
   LeaveTransaction,
 } from './leave-store';
+import type { LeaveTypeRecord } from './leave-type-service';
 
 const MAX_LIST_READS = 200;
 
@@ -57,6 +58,7 @@ export class FirestoreLeaveStore implements LeaveStore {
       const leaves = this.firestore.collection('leave_requests');
       const employees = this.firestore.collection('employees');
       const settings = this.firestore.collection('settings').doc('company');
+      const leaveTypes = this.firestore.collection('leave_types');
       const attendance = this.firestore.collection('attendance');
       const payrollMonths = this.firestore.collection('payroll_months');
       const holidays = this.firestore.collection('holidays');
@@ -79,6 +81,12 @@ export class FirestoreLeaveStore implements LeaveStore {
         getCompanySettings: async () => {
           const snapshot = await firestoreTransaction.get(settings);
           return snapshot.exists ? snapshot.data() : undefined;
+        },
+        getLeaveType: async (id) => {
+          const snapshot = await firestoreTransaction.get(leaveTypes.doc(id));
+          return snapshot.exists
+            ? { ...snapshot.data(), id: snapshot.id } as LeaveTypeRecord
+            : undefined;
         },
         getHolidays: async (months) => {
           // Generated and legacy IDs coexist, so filter a bounded collection read in memory.

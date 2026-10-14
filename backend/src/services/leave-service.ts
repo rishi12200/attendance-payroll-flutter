@@ -14,6 +14,8 @@ import type {
   LeaveType,
 } from './leave-store';
 import { holidayAppliesToBranch } from '../domain/holidays';
+import { computeBalances, countRequestedDates, dayWeight, splitByLeaveYear, wouldExceedQuota, type LeaveSession } from '../domain/leave-quantity';
+import { leaveYearByYear } from '../domain/leave-year';
 
 const MAX_LIST_READS = 200;
 const activeStatuses = new Set<LeaveStatus>(['pending', 'approved']);
@@ -29,8 +31,8 @@ export interface LeaveServiceDependencies {
 
 export type LeaveDto = Pick<LeaveRequestRecord,
   'id' | 'empId' | 'fromDate' | 'toDate' | 'reason' | 'status' | 'createdAt' | 'updatedAt'
-> & Partial<Pick<LeaveRequestRecord,
-  'leaveType' | 'decidedBy' | 'decidedAt' | 'decisionNote' | 'writtenDates' | 'skippedDates'
+> & Pick<LeaveRequestRecord, 'leaveTypeId' | 'leaveTypeName' | 'paid' | 'session'> & Partial<Pick<LeaveRequestRecord,
+  'leaveType' | 'decidedBy' | 'decidedAt' | 'decisionNote' | 'writtenDates' | 'skippedDates' | 'requestedDates' | 'requestedDays'
 >>;
 
 export class LeaveService {
@@ -38,23 +40,57 @@ export class LeaveService {
 
   async apply(
     caller: LeaveCaller,
-    input: { fromDate: string; toDate: string; reason: string },
+    input: { leaveTypeId: string; fromDate: string; toDate: string; reason: string; session?: LeaveSession },
   ): Promise<LeaveDto> {
-    const employee = await this.requireActiveEmployee(caller);
+    this.requireRole(caller.role, 'employee');
     const dates = this.expandRequest(input.fromDate, input.toDate);
-    this.assertWithinEmploymentWindow(employee, input.fromDate, input.toDate);
     const months = monthsTouched(input.fromDate, input.toDate);
+    const session = input.session ?? 'full';
 
     const id = await this.store.runTransaction(async (transaction) => {
-      const [currentEmployee, lockedMonths, requests] = await Promise.all([
+      const [currentEmployee, leaveType, settingsDocument, holidayRows, lockedMonths, requests] = await Promise.all([
         transaction.getEmployee(caller.uid),
+        transaction.getLeaveType(input.leaveTypeId),
+        transaction.getCompanySettings(),
+        transaction.getHolidays(months),
         Promise.all(months.map((month) => transaction.getPayrollMonth(month))),
         transaction.getEmployeeLeaveRequests(caller.uid),
       ]);
       if (!currentEmployee || currentEmployee.role !== 'employee' || currentEmployee.status !== 'active') {
         throw new AppError(403, 'FORBIDDEN', 'An active employee account is required.');
       }
+      if (!leaveType) throw new AppError(404, 'LEAVE_TYPE_NOT_FOUND', 'Leave type was not found.');
+      if (leaveType.status !== 'active' || leaveType.id === 'legacy-paid') {
+        throw new AppError(422, 'LEAVE_TYPE_INACTIVE', 'This leave type is not available for new requests.');
+      }
       this.assertWithinEmploymentWindow(currentEmployee, input.fromDate, input.toDate);
+
+      const holidays = holidayRows
+        .filter((holiday) => holidayAppliesToBranch(holiday, currentEmployee.primaryBranchId ?? null))
+        .map((holiday) => String(holiday.date));
+      const settings = attendanceSettingsFromDocument(settingsDocument);
+      const requestedDates = countRequestedDates({
+        dates,
+        doj: typeof currentEmployee.doj === 'string' ? currentEmployee.doj : null,
+        dol: typeof currentEmployee.dol === 'string' ? currentEmployee.dol : null,
+        holidayMap: new Set(holidays),
+        weeklyOffDays: settings.weeklyOffDays,
+      });
+      const weight = dayWeight(session);
+      if (session !== 'full') {
+        if (input.fromDate !== input.toDate) {
+          throw new AppError(422, 'HALF_DAY_SINGLE_DATE', 'A half-day request must cover exactly one date.');
+        }
+        if (!leaveType.allowHalfDay) {
+          throw new AppError(422, 'HALF_DAY_NOT_ALLOWED', 'This leave type does not allow half-day requests.');
+        }
+        if (requestedDates.length === 0) {
+          throw new AppError(422, 'NOT_A_WORKING_DAY', 'Half-day leave must be requested on a working day.');
+        }
+      } else if (requestedDates.length === 0) {
+        throw new AppError(422, 'NO_WORKING_DAYS', 'This range has no working days (weekly offs and holidays are not counted).');
+      }
+
       const lockedIndex = lockedMonths.findIndex((month) => month?.locked === true);
       if (lockedIndex >= 0) throw this.monthLocked(months[lockedIndex]!);
 
@@ -71,6 +107,29 @@ export class LeaveService {
         );
       }
 
+      const yearSplits = splitByLeaveYear(requestedDates, weight, settings.leaveYearStartMonth);
+      for (const split of yearSplits) {
+        if (leaveType.annualQuotaDays === null) continue;
+        const balance = computeBalances({
+          types: [leaveType],
+          requests,
+          yearStartDate: split.startDate,
+          yearEndDate: split.endDate,
+        })[0]!;
+        if (wouldExceedQuota(leaveType.annualQuotaDays, balance.used, balance.pending, split.days)) {
+          throw new AppError(422, 'QUOTA_EXCEEDED', `The ${leaveType.name} quota for ${split.yearLabel} would be exceeded.`, {
+            leaveTypeId: leaveType.id,
+            leaveTypeName: leaveType.name,
+            yearLabel: split.yearLabel,
+            quota: leaveType.annualQuotaDays,
+            used: balance.used,
+            pending: balance.pending,
+            requested: split.days,
+            remaining: leaveType.annualQuotaDays - balance.used - balance.pending,
+          });
+        }
+      }
+
       const timestamp = this.store.serverTimestamp();
       return transaction.createLeaveRequest({
         empId: caller.uid,
@@ -78,11 +137,17 @@ export class LeaveService {
         toDate: dates[dates.length - 1]!,
         reason: input.reason.trim(),
         status: 'pending',
+        leaveTypeId: leaveType.id,
+        leaveTypeName: leaveType.name,
+        paid: leaveType.paid,
+        session,
+        requestedDates,
+        requestedDays: requestedDates.length * weight,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
     });
-    return toLeaveDto(await this.requirePersistedRequest(id));
+    return toLeaveRequestDto(await this.requirePersistedRequest(id));
   }
 
   async listMine(
@@ -95,7 +160,7 @@ export class LeaveService {
       limit: MAX_LIST_READS,
     });
     return sortNewestFirst(requests.filter((request) => status === undefined || status === 'all' || request.status === status))
-      .map(toLeaveDto);
+      .map(toLeaveRequestDto);
   }
 
   async listAll(
@@ -119,7 +184,7 @@ export class LeaveService {
     return matching.map((request) => {
       const employee = byId.get(request.empId);
       return {
-        ...toLeaveDto(request),
+        ...toLeaveRequestDto(request),
         name: employee?.name ?? '',
         empCode: employee?.empCode ?? null,
         designation: employee?.designation ?? '',
@@ -135,7 +200,7 @@ export class LeaveService {
     if (!request || (caller.role === 'employee' && request.empId !== caller.uid)) {
       throw new AppError(404, 'LEAVE_NOT_FOUND', 'Leave request was not found.');
     }
-    return toLeaveDto(request);
+    return toLeaveRequestDto(request);
   }
 
   async cancel(caller: LeaveCaller, id: string): Promise<LeaveDto> {
@@ -153,7 +218,7 @@ export class LeaveService {
         updatedAt: this.store.serverTimestamp(),
       });
     });
-    return toLeaveDto(await this.requirePersistedRequest(id));
+    return toLeaveRequestDto(await this.requirePersistedRequest(id));
   }
 
   async decide(input: {
@@ -259,7 +324,7 @@ export class LeaveService {
       return classification.toWrite.length === 0;
     });
 
-    const request = toLeaveDto(await this.requirePersistedRequest(input.id));
+    const request = toLeaveRequestDto(await this.requirePersistedRequest(input.id));
     return noDaysWritten ? { ...request, noDaysWritten: true } : request;
   }
 
@@ -323,7 +388,9 @@ function attendanceId(month: string, empId: string): string {
   return `${month}_${empId}`;
 }
 
-export function toLeaveDto(request: LeaveRequestRecord): LeaveDto {
+export function toLeaveRequestDto(request: LeaveRequestRecord): LeaveDto {
+  const legacyType = request.leaveType === 'paid' ? 'Paid Leave'
+    : request.leaveType === 'unpaid' ? 'Unpaid Leave' : null;
   const dto: LeaveDto = {
     id: request.id,
     empId: request.empId,
@@ -333,6 +400,13 @@ export function toLeaveDto(request: LeaveRequestRecord): LeaveDto {
     status: request.status,
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
+    leaveTypeId: typeof request.leaveTypeId === 'string' ? request.leaveTypeId : null,
+    leaveTypeName: typeof request.leaveTypeName === 'string' ? request.leaveTypeName : legacyType,
+    paid: typeof request.paid === 'boolean' ? request.paid
+      : request.leaveType === 'paid' ? true : request.leaveType === 'unpaid' ? false : null,
+    session: request.session ?? 'full',
+    requestedDates: request.requestedDates ?? [],
+    requestedDays: typeof request.requestedDays === 'number' ? request.requestedDays : 0,
   };
   if (request.status === 'approved' || request.status === 'rejected') {
     if (request.leaveType !== undefined) dto.leaveType = request.leaveType;

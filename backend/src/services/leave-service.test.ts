@@ -13,6 +13,7 @@ import type {
   LeaveTransaction,
 } from './leave-store';
 import type { HolidayInput } from '../domain/holidays';
+import type { LeaveTypeRecord } from './leave-type-service';
 
 const employee: EmployeeRecord = {
   uid: 'emp-1',
@@ -35,6 +36,10 @@ class FakeLeaveStore implements LeaveStore {
     ['emp-2', { ...employee, uid: 'emp-2', empCode: 'EMP002', name: 'Ravi' }],
   ]);
   readonly requests = new Map<string, LeaveRequestRecord>();
+  readonly types = new Map<string, LeaveTypeRecord>([['annual', {
+    id: 'annual', name: 'Annual Leave', code: 'AL', paid: true,
+    annualQuotaDays: null, allowHalfDay: true, status: 'active', system: false, sortOrder: 1,
+  }]]);
   readonly attendance = new Map<string, AttendanceDocument>();
   readonly payrollMonths = new Map<string, { locked?: boolean }>();
   readonly holidays = new Set<string>();
@@ -97,6 +102,10 @@ class FakeLeaveStore implements LeaveStore {
       getCompanySettings: async () => read(() => {
         this.events.push('read-settings');
         return this.settings;
+      }),
+      getLeaveType: async (id) => read(() => {
+        this.events.push('read-leave-type');
+        return this.types.get(id);
       }),
       getHolidays: async (months) => read(() => {
         this.events.push('read-holidays');
@@ -195,7 +204,7 @@ async function expectError(work: Promise<unknown>, status: number, code: string)
 }
 
 async function apply(leaves: LeaveService, fromDate = '2026-10-05', toDate = fromDate) {
-  return leaves.apply(empCaller, { fromDate, toDate, reason: 'Family event' });
+  return leaves.apply(empCaller, { leaveTypeId: 'annual', fromDate, toDate, reason: 'Family event' });
 }
 
 async function pendingRequest(leaves: LeaveService, fromDate: string, toDate: string) {
@@ -218,10 +227,69 @@ test('applies a pending request and enforces the employee joining window', async
   await expectError(apply(leaves, '2026-10-06'), 422, 'OUTSIDE_EMPLOYMENT_WINDOW');
 });
 
+test('validates leave type availability and half-day working-date rules', async () => {
+  const { store, leaves } = service();
+  store.types.set('inactive', { ...store.types.get('annual')!, id: 'inactive', status: 'inactive' });
+  await expectError(leaves.apply(empCaller, {
+    leaveTypeId: 'unknown', fromDate: '2026-10-05', toDate: '2026-10-05', reason: 'x',
+  }), 404, 'LEAVE_TYPE_NOT_FOUND');
+  await expectError(leaves.apply(empCaller, {
+    leaveTypeId: 'inactive', fromDate: '2026-10-05', toDate: '2026-10-05', reason: 'x',
+  }), 422, 'LEAVE_TYPE_INACTIVE');
+  await expectError(leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-06', reason: 'x', session: 'first_half',
+  }), 422, 'HALF_DAY_SINGLE_DATE');
+  store.types.set('annual', { ...store.types.get('annual')!, allowHalfDay: false });
+  await expectError(leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05', reason: 'x', session: 'first_half',
+  }), 422, 'HALF_DAY_NOT_ALLOWED');
+  store.types.set('annual', { ...store.types.get('annual')!, allowHalfDay: true });
+  store.settings = { weeklyOffDays: [1] };
+  await expectError(leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05', reason: 'x', session: 'second_half',
+  }), 422, 'NOT_A_WORKING_DAY');
+  store.settings = { weeklyOffDays: [] };
+  store.holidays.add('2026-10-05');
+  await expectError(leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05', reason: 'x', session: 'second_half',
+  }), 422, 'NOT_A_WORKING_DAY');
+});
+
+test('excludes holidays and weekly offs and rejects full ranges with no working dates', async () => {
+  const { store, leaves } = service();
+  store.settings = { weeklyOffDays: [0, 1] };
+  store.holidays.add('2026-10-07');
+  const result = await apply(leaves, '2026-10-04', '2026-10-07');
+  assert.deepEqual(result.requestedDates, ['2026-10-06']);
+  assert.equal(result.requestedDays, 1);
+  store.settings = { weeklyOffDays: [0, 1, 2, 3, 4, 5, 6] };
+  await expectError(apply(leaves, '2026-10-11'), 422, 'NO_WORKING_DAYS');
+});
+
+test('reserves exact half-day quotas and splits quota by the leave year', async () => {
+  const { store, leaves } = service();
+  store.settings = { weeklyOffDays: [], leaveYearStartMonth: 4 };
+  store.types.set('annual', { ...store.types.get('annual')!, annualQuotaDays: 0.5 });
+  const first = await leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-03-31', toDate: '2026-03-31',
+    reason: 'x', session: 'first_half',
+  });
+  assert.equal(first.requestedDays, 0.5);
+  await expectError(leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-03-30', toDate: '2026-03-30',
+    reason: 'x', session: 'second_half',
+  }), 422, 'QUOTA_EXCEEDED');
+  const newLeaveYear = await leaves.apply(empCaller, {
+    leaveTypeId: 'annual', fromDate: '2026-04-01', toDate: '2026-04-01',
+    reason: 'x', session: 'second_half',
+  });
+  assert.equal(newLeaveYear.requestedDays, 0.5);
+});
+
 test('rejects admins, inactive employees, locked months and overlapping requests', async () => {
   const { store, leaves } = service();
   await expectError(
-    leaves.apply(admin, { fromDate: '2026-10-05', toDate: '2026-10-05', reason: 'x' }),
+    leaves.apply(admin, { leaveTypeId: 'annual', fromDate: '2026-10-05', toDate: '2026-10-05', reason: 'x' }),
     403,
     'FORBIDDEN',
   );
@@ -419,10 +487,13 @@ test('rejects repeated decisions including concurrent approvals', async () => {
   }
 });
 
-test('approves all-skipped requests with a warning and calendar summaries reflect leave', async () => {
+test('approves a request that becomes all-skipped after apply and calendar summaries reflect leave', async () => {
   const { store, leaves } = service();
   store.settings = { weeklyOffDays: [0] };
-  const allSkipped = await pendingRequest(leaves, '2026-10-04');
+  const allSkipped = await pendingRequest(leaves, '2026-10-05');
+  store.attendance.set('2026-10_emp-1', {
+    empId: 'emp-1', month: '2026-10', days: { '2026-10-05': { status: 'P' } },
+  });
   const warning = await leaves.decide({ caller: admin, id: allSkipped.id, decision: 'approved', leaveType: 'paid' });
   assert.equal(warning.noDaysWritten, true);
   assert.deepEqual(warning.writtenDates, []);
