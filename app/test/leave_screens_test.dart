@@ -637,23 +637,44 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Balance'));
       await tester.pumpAndSettle();
-      expect(find.text('Used: 1 day'), findsOneWidget);
-      expect(find.text('Pending: 0.5 day'), findsOneWidget);
-      expect(find.text('Remaining: 6.5 days'), findsOneWidget);
+      expect(find.text('Remaining leave days'), findsOneWidget);
+      expect(find.text('2026'), findsNWidgets(2));
+      expect(find.text('6.5 days'), findsOneWidget);
+      expect(find.text('Days left after pending requests.'), findsOneWidget);
+      expect(find.textContaining('%'), findsNothing);
+      expect(
+        find.text('Not in the chart: Unpaid Leave (no limit)'),
+        findsOneWidget,
+      );
       expect(
         find.text('Pending requests are reserved from your balance.'),
         findsOneWidget,
       );
+      await tester.ensureVisible(find.text('Quota: 8 days'));
+      await tester.pumpAndSettle();
+      expect(find.text('Quota: 8 days'), findsOneWidget);
+      expect(find.text('Used: 1 day'), findsOneWidget);
+      expect(find.text('Pending: 0.5 day'), findsOneWidget);
+      expect(find.text('Remaining: 6.5 days'), findsOneWidget);
+      await tester.ensureVisible(find.text('Quota: No limit'));
+      await tester.pumpAndSettle();
+      expect(find.text('Quota: No limit'), findsOneWidget);
+      expect(find.text('Used: 0.5 day'), findsOneWidget);
+      expect(find.text('Pending: 0 days'), findsOneWidget);
+      expect(find.text('Remaining: No limit'), findsOneWidget);
       expect(find.byKey(const ValueKey('apply-leave-button')), findsNothing);
+      await tester.drag(find.byType(ListView).last, const Offset(0, 1000));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Previous leave year'));
       await tester.pumpAndSettle();
-      expect(find.text('2025'), findsOneWidget);
+      expect(find.text('2025'), findsNWidgets(2));
+      expect(find.text('Remaining leave days'), findsOneWidget);
       await tester.tap(find.byTooltip('Previous leave year'));
       await tester.pumpAndSettle();
-      expect(find.text('2025'), findsOneWidget);
+      expect(find.text('2025'), findsNWidgets(2));
       await tester.tap(find.byTooltip('Next leave year'));
       await tester.pumpAndSettle();
-      expect(find.text('2026'), findsOneWidget);
+      expect(find.text('2026'), findsNWidgets(2));
     },
   );
 
@@ -1102,6 +1123,7 @@ void main() {
     expect(find.text('Leave'), findsOneWidget);
     await tester.tap(find.text('Leave'));
     await tester.pumpAndSettle();
+    expect(find.text('Remaining leave days'), findsNothing);
     expect(leave.lastBalanceEmpId, 'emp-1');
     expect(leave.lastEmpId, 'emp-1');
     expect(find.textContaining('6.5 days'), findsOneWidget);
