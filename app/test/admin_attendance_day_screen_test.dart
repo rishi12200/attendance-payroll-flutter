@@ -4,13 +4,13 @@ import 'package:app/core/api/app_exception.dart';
 import 'package:app/features/attendance/data/attendance_views_providers.dart';
 import 'package:app/features/attendance/domain/attendance_helpers.dart';
 import 'package:app/features/attendance/domain/attendance_views.dart';
+import 'package:app/features/attendance/domain/attendance.dart';
 import 'package:app/features/attendance/presentation/admin_attendance_day_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-String _today() =>
-    istDateOf(DateTime.now().toUtc().toIso8601String());
+String _today() => istDateOf(DateTime.now().toUtc().toIso8601String());
 
 AttendanceByDate _response({
   required String date,
@@ -33,9 +33,7 @@ AttendanceDateRow _row({
   noCheckout: noCheckout,
   checkedInNow: checkedInNow,
   inTime: '2026-10-08T03:30:00.000Z',
-  outTime: noCheckout || checkedInNow
-      ? null
-      : '2026-10-08T11:30:00.000Z',
+  outTime: noCheckout || checkedInNow ? null : '2026-10-08T11:30:00.000Z',
   workedMinutes: noCheckout || checkedInNow ? null : 480,
   inBranchName: 'Chennai Office',
 );
@@ -60,6 +58,40 @@ Widget _app(
 );
 
 void main() {
+  testWidgets('shows HL totals and half-day row details', (tester) async {
+    final date = _today();
+    final row = AttendanceDateRow(
+      empId: 'employee-half',
+      empCode: 'EMP007',
+      name: 'Asha',
+      status: 'HL',
+      derived: false,
+      noCheckout: false,
+      checkedInNow: false,
+      halfLeave: const HalfLeave(
+        session: 'first_half',
+        paid: true,
+        leaveTypeId: 'casual',
+        leaveTypeName: 'Casual Leave',
+        leaveRequestId: 'r1',
+      ),
+      otherHalf: 'present',
+    );
+    await tester.pumpWidget(
+      _app(
+        date,
+        () async =>
+            _response(date: date, today: date, rows: [row], totals: {'HL': 1}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Half-day leave: 1'), findsOneWidget);
+    expect(find.text('HL'), findsOneWidget);
+    expect(
+      find.textContaining('First half · Casual Leave · other half present'),
+      findsOneWidget,
+    );
+  });
   testWidgets('shows loading state while the day request is pending', (
     tester,
   ) async {

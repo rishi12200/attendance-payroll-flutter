@@ -7,6 +7,7 @@ import '../data/attendance_views_providers.dart';
 import '../domain/attendance_helpers.dart';
 import '../domain/attendance_views.dart';
 import 'admin_attendance_summary_screen.dart';
+import '../../leave/domain/leave_type.dart' show sessionLabel;
 
 typedef OpenEmployeeAttendance = void Function(String empId, String month);
 
@@ -165,6 +166,7 @@ class _AttendanceRows extends StatelessWidget {
             'A',
             'L',
             'UL',
+            'HL',
             'WEEKLY_OFF',
             'HOLIDAY',
             'PENDING',
@@ -195,10 +197,23 @@ class _AttendanceRows extends StatelessWidget {
                       attendance.date.substring(0, 7),
                     ),
               title: Text(row.name),
+              leading: row.status == 'HL'
+                  ? const Chip(
+                      label: Text('HL'),
+                      visualDensity: VisualDensity.compact,
+                    )
+                  : null,
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('${row.empCode} · ${_statusName(row.status)}'),
+                  if (row.status == 'HL' && row.halfLeave != null)
+                    Text(
+                      '${sessionLabel(row.halfLeave!.session)} · ${row.halfLeave!.leaveTypeName ?? row.leaveTypeName ?? 'Leave'} · other half ${row.otherHalf ?? 'pending'}',
+                    ),
+                  if ((row.status == 'L' || row.status == 'UL') &&
+                      row.leaveTypeName != null)
+                    Text('Leave type: ${row.leaveTypeName}'),
                   if (row.inTime != null)
                     Text('In: ${formatIstTime(row.inTime!)}'),
                   if (row.outTime != null)
@@ -258,9 +273,11 @@ String _statusName(String status) => switch (status) {
   'A' => 'Absent',
   'L' => 'Paid leave',
   'UL' => 'Unpaid leave',
+  'HL' => 'Half-day leave',
   'WEEKLY_OFF' => 'Weekly off',
   'HOLIDAY' => 'Holiday',
   'NOT_JOINED' => 'Not joined',
   'LEFT' => 'Left',
-  _ => status == 'PENDING' ? 'Pending' : status,
+  'PENDING' => 'Pending',
+  _ => 'Unknown status',
 };

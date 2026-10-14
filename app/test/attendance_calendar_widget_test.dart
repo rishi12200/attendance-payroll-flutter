@@ -1,4 +1,5 @@
 import 'package:app/features/attendance/domain/attendance_views.dart';
+import 'package:app/features/attendance/domain/attendance.dart';
 import 'package:app/features/attendance/presentation/attendance_calendar_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,6 +79,91 @@ Widget _app({
 );
 
 void main() {
+  testWidgets(
+    'renders HL with its code, legend, type details and other-half state',
+    (tester) async {
+      final calendar = _calendar(
+        days: [
+          const AttendanceCalendarDay(
+            date: '2026-10-12',
+            weekday: 1,
+            status: 'HL',
+            derived: false,
+            halfLeave: HalfLeave(
+              session: 'first_half',
+              paid: true,
+              leaveTypeId: 'casual',
+              leaveTypeName: 'Casual Leave',
+              leaveRequestId: 'r1',
+            ),
+            otherHalf: 'present',
+            inTime: '2026-10-12T03:30:00.000Z',
+            outTime: '2026-10-12T07:30:00.000Z',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        _app(calendar: calendar, month: '2026-10', onMonthChanged: (_) {}),
+      );
+      final cell = find.byKey(const ValueKey('calendar-status-2026-10-12'));
+      expect(
+        find.descendant(of: cell, matching: find.text('HL')),
+        findsOneWidget,
+      );
+      expect(find.text('Half-day leave'), findsOneWidget);
+      final color =
+          (tester.widget<Container>(cell).decoration! as BoxDecoration).color;
+      expect(color, Colors.indigo.shade800.withValues(alpha: 0.16));
+      await tester.tap(find.byKey(const ValueKey('calendar-day-2026-10-12')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Half-day leave (first half): Casual Leave, paid'),
+        findsOneWidget,
+      );
+      expect(find.text('Other half: present'), findsOneWidget);
+      expect(find.text('In: 09:00 AM'), findsOneWidget);
+      expect(find.text('Out: 01:00 PM'), findsOneWidget);
+    },
+  );
+
+  for (final otherHalf in ['present', 'absent', 'pending']) {
+    testWidgets('day sheet describes the $otherHalf other half', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          calendar: _calendar(
+            days: [
+              AttendanceCalendarDay(
+                date: '2026-10-12',
+                weekday: 1,
+                status: 'HL',
+                derived: false,
+                halfLeave: const HalfLeave(
+                  session: 'second_half',
+                  paid: false,
+                  leaveTypeId: 'ul',
+                  leaveTypeName: 'Unpaid Leave',
+                  leaveRequestId: 'r2',
+                ),
+                otherHalf: otherHalf,
+              ),
+            ],
+          ),
+          month: '2026-10',
+          onMonthChanged: (_) {},
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('calendar-day-2026-10-12')));
+      await tester.pumpAndSettle();
+      expect(find.text('Other half: $otherHalf'), findsOneWidget);
+      expect(
+        find.text('Half-day leave (second half): Unpaid Leave, unpaid'),
+        findsOneWidget,
+      );
+    });
+  }
+
   testWidgets('shows status codes, status colors, legend and summary values', (
     tester,
   ) async {

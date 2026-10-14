@@ -1,3 +1,5 @@
+import 'attendance.dart';
+
 class AttendanceSummary {
   const AttendanceSummary({
     required this.daysInMonth,
@@ -17,13 +19,13 @@ class AttendanceSummary {
   final int daysInMonth;
   final int weeklyOffs;
   final int holidays;
-  final int present;
+  final double present;
   final int halfDays;
-  final int absent;
-  final int paidLeave;
-  final int unpaidLeave;
+  final double absent;
+  final double paidLeave;
+  final double unpaidLeave;
   final int notJoinedOrLeftDays;
-  final int pending;
+  final double pending;
   final double lop;
   final double payableDays;
 
@@ -32,13 +34,13 @@ class AttendanceSummary {
         daysInMonth: _requiredInt(json, 'daysInMonth'),
         weeklyOffs: _requiredInt(json, 'weeklyOffs'),
         holidays: _requiredInt(json, 'holidays'),
-        present: _requiredInt(json, 'present'),
+        present: _requiredDouble(json, 'present'),
         halfDays: _requiredInt(json, 'halfDays'),
-        absent: _requiredInt(json, 'absent'),
-        paidLeave: _requiredInt(json, 'paidLeave'),
-        unpaidLeave: _requiredInt(json, 'unpaidLeave'),
+        absent: _requiredDouble(json, 'absent'),
+        paidLeave: _requiredDouble(json, 'paidLeave'),
+        unpaidLeave: _requiredDouble(json, 'unpaidLeave'),
         notJoinedOrLeftDays: _requiredInt(json, 'notJoinedOrLeftDays'),
-        pending: _requiredInt(json, 'pending'),
+        pending: _requiredDouble(json, 'pending'),
         lop: _requiredDouble(json, 'lop'),
         payableDays: _requiredDouble(json, 'payableDays'),
       );
@@ -59,6 +61,10 @@ class AttendanceCalendarDay {
     this.source,
     this.editedBy,
     this.editedAt,
+    this.leaveTypeId,
+    this.leaveTypeName,
+    this.halfLeave,
+    this.otherHalf,
   });
 
   final String date;
@@ -74,12 +80,16 @@ class AttendanceCalendarDay {
   final String? source;
   final String? editedBy;
   final String? editedAt;
+  final String? leaveTypeId;
+  final String? leaveTypeName;
+  final HalfLeave? halfLeave;
+  final String? otherHalf;
 
   factory AttendanceCalendarDay.fromJson(Map<String, dynamic> json) =>
       AttendanceCalendarDay(
         date: _requiredString(json, 'date'),
         weekday: _requiredInt(json, 'weekday'),
-        status: _requiredString(json, 'status'),
+        status: _optionalString(json, 'status') ?? 'UNKNOWN',
         derived: _requiredBool(json, 'derived'),
         holidayName: _optionalString(json, 'holidayName'),
         inTime: _optionalString(json, 'inTime'),
@@ -90,6 +100,12 @@ class AttendanceCalendarDay {
         source: _optionalString(json, 'source'),
         editedBy: _optionalString(json, 'editedBy'),
         editedAt: _optionalString(json, 'editedAt'),
+        leaveTypeId: _optionalString(json, 'leaveTypeId'),
+        leaveTypeName: _optionalString(json, 'leaveTypeName'),
+        halfLeave: json['halfLeave'] is Map
+            ? HalfLeave.fromJson(_asMap(json['halfLeave']))
+            : null,
+        otherHalf: _optionalString(json, 'otherHalf'),
       );
 }
 
@@ -143,6 +159,10 @@ class AttendanceDateRow {
     this.inBranchName,
     this.outBranchName,
     this.source,
+    this.leaveTypeId,
+    this.leaveTypeName,
+    this.halfLeave,
+    this.otherHalf,
   });
 
   final String empId;
@@ -159,13 +179,17 @@ class AttendanceDateRow {
   final String? inBranchName;
   final String? outBranchName;
   final String? source;
+  final String? leaveTypeId;
+  final String? leaveTypeName;
+  final HalfLeave? halfLeave;
+  final String? otherHalf;
 
   factory AttendanceDateRow.fromJson(Map<String, dynamic> json) =>
       AttendanceDateRow(
         empId: _requiredString(json, 'empId'),
         empCode: _requiredString(json, 'empCode'),
         name: _requiredString(json, 'name'),
-        status: _requiredString(json, 'status'),
+        status: _optionalString(json, 'status') ?? 'UNKNOWN',
         derived: _requiredBool(json, 'derived'),
         noCheckout: _requiredBool(json, 'noCheckout'),
         checkedInNow: _requiredBool(json, 'checkedInNow'),
@@ -176,6 +200,12 @@ class AttendanceDateRow {
         inBranchName: _optionalString(json, 'inBranchName'),
         outBranchName: _optionalString(json, 'outBranchName'),
         source: _optionalString(json, 'source'),
+        leaveTypeId: _optionalString(json, 'leaveTypeId'),
+        leaveTypeName: _optionalString(json, 'leaveTypeName'),
+        halfLeave: json['halfLeave'] is Map
+            ? HalfLeave.fromJson(_asMap(json['halfLeave']))
+            : null,
+        otherHalf: _optionalString(json, 'otherHalf'),
       );
 }
 
@@ -289,6 +319,7 @@ class AttendanceSettings {
     required this.maxAccuracyMeters,
     required this.rejectMockLocation,
     required this.enforceCheckoutLocation,
+    this.leaveYearStartMonth = 1,
   });
 
   final String companyName;
@@ -297,6 +328,7 @@ class AttendanceSettings {
   final int maxAccuracyMeters;
   final bool rejectMockLocation;
   final bool enforceCheckoutLocation;
+  final int leaveYearStartMonth;
 
   factory AttendanceSettings.fromJson(Map<String, dynamic> json) {
     final rawWeekdays = json['weeklyOffDays'];
@@ -312,6 +344,12 @@ class AttendanceSettings {
       maxAccuracyMeters: _requiredInt(json, 'maxAccuracyMeters'),
       rejectMockLocation: _requiredBool(json, 'rejectMockLocation'),
       enforceCheckoutLocation: _requiredBool(json, 'enforceCheckoutLocation'),
+      leaveYearStartMonth:
+          json['leaveYearStartMonth'] is int &&
+              (json['leaveYearStartMonth'] as int) >= 1 &&
+              (json['leaveYearStartMonth'] as int) <= 12
+          ? json['leaveYearStartMonth'] as int
+          : 1,
     );
   }
 }

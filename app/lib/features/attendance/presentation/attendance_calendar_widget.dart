@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../domain/attendance_helpers.dart';
 import '../domain/attendance_month.dart';
 import '../domain/attendance_views.dart';
+import '../../leave/domain/leave_type.dart'
+    show formatDays, paidLabel, sessionLabel;
 
 typedef AttendanceCalendarEditCallback = Future<void> Function(
   AttendanceCalendarDay day,
@@ -116,7 +118,7 @@ class _SummaryHeader extends StatelessWidget {
     runSpacing: 4,
     children: [
       _SummaryChip('Present', summary.present),
-      _SummaryChip('Half days', summary.halfDays),
+      _SummaryChip('Half days', summary.halfDays.toDouble()),
       _SummaryChip('Absent', summary.absent),
       _SummaryChip('Paid leave', summary.paidLeave),
       _SummaryChip('Unpaid leave', summary.unpaidLeave),
@@ -139,8 +141,7 @@ class _SummaryChip extends StatelessWidget {
   );
 }
 
-String _summaryNumber(num value) =>
-    value == value.roundToDouble() ? value.toInt().toString() : '$value';
+String _summaryNumber(num value) => formatDays(value.toDouble());
 
 class _CalendarGrid extends StatelessWidget {
   const _CalendarGrid({
@@ -232,6 +233,7 @@ String _statusCode(String status) => switch (status) {
   'A' => 'A',
   'L' => 'L',
   'UL' => 'UL',
+  'HL' => 'HL',
   'WEEKLY_OFF' => 'WO',
   'HOLIDAY' => 'HOL',
   'NOT_JOINED' || 'LEFT' || 'PENDING' => '-',
@@ -244,12 +246,13 @@ String _statusWord(String status) => switch (status) {
   'A' => 'Absent',
   'L' => 'Paid leave',
   'UL' => 'Unpaid leave',
+  'HL' => 'Half-day leave',
   'WEEKLY_OFF' => 'Weekly off',
   'HOLIDAY' => 'Holiday',
   'NOT_JOINED' => 'Not joined',
   'LEFT' => 'Left',
   'PENDING' => 'Pending',
-  _ => status,
+  _ => 'Unknown status',
 };
 
 Color _statusColor(BuildContext context, String status) {
@@ -260,6 +263,7 @@ Color _statusColor(BuildContext context, String status) {
     'A' => scheme.error,
     'L' => Colors.blue.shade800,
     'UL' => Colors.deepOrange.shade800,
+    'HL' => Colors.indigo.shade800,
     'WEEKLY_OFF' => scheme.secondary,
     'HOLIDAY' => Colors.purple.shade800,
     _ => scheme.outline,
@@ -279,6 +283,7 @@ class _CalendarLegend extends StatelessWidget {
       _LegendItem(code: 'A', label: 'Absent'),
       _LegendItem(code: 'L', label: 'Paid leave'),
       _LegendItem(code: 'UL', label: 'Unpaid leave'),
+      _LegendItem(code: 'HL', label: 'Half-day leave'),
       _LegendItem(code: 'WO', label: 'Weekly off'),
       _LegendItem(code: 'HOL', label: 'Holiday'),
       _LegendItem(code: '-', label: 'Not joined / left / pending'),
@@ -331,6 +336,15 @@ class _DayDetailsSheet extends StatelessWidget {
             Text(
               'Status: ${_statusWord(day.status)} (${_statusCode(day.status)})',
             ),
+            if (day.halfLeave case final marker?) ...[
+              Text(
+                'Half-day leave (${sessionLabel(marker.session).toLowerCase()}): ${marker.leaveTypeName ?? day.leaveTypeName ?? 'Leave'}, ${paidLabel(marker.paid).toLowerCase()}',
+              ),
+              Text('Other half: ${day.otherHalf ?? 'pending'}'),
+            ],
+            if ((day.status == 'L' || day.status == 'UL') &&
+                day.leaveTypeName != null)
+              Text('Leave type: ${day.leaveTypeName}'),
             if (day.derived) const Text('No attendance recorded'),
             if (day.holidayName != null) Text('Holiday: ${day.holidayName}'),
             if (day.inTime != null) Text('In: ${formatIstTime(day.inTime!)}'),

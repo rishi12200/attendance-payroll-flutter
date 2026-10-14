@@ -7,6 +7,7 @@ import '../domain/attendance_helpers.dart';
 import '../domain/attendance_month.dart';
 import '../domain/attendance_views.dart';
 import 'admin_attendance_day_screen.dart';
+import '../../leave/domain/leave_type.dart' show formatDays;
 
 class AdminAttendanceSummaryScreen extends ConsumerStatefulWidget {
   const AdminAttendanceSummaryScreen({this.onOpenEmployee, super.key});
@@ -123,11 +124,11 @@ class _SummaryRows extends StatelessWidget {
                   : () => onOpenEmployee!(row.empId, month),
               title: Text(row.name),
               subtitle: Text(
-                '${row.empCode} · Present ${row.summary.present} · '
-                'Half days ${row.summary.halfDays} · '
-                'Absent ${row.summary.absent}',
+                '${row.empCode} · Present ${formatDays(row.summary.present)} · '
+                'Half days ${formatDays(row.summary.halfDays.toDouble())} · '
+                'Absent ${formatDays(row.summary.absent)}',
               ),
-              trailing: Text('LOP ${_summaryNumber(row.summary.lop)}'),
+              trailing: Text('LOP ${formatDays(row.summary.lop)}'),
             ),
           ),
       ],
@@ -158,6 +159,3 @@ String _errorMessage(Object error) => switch (error) {
   AppException(:final message) => message,
   _ => 'Could not load attendance summaries. Please try again.',
 };
-
-String _summaryNumber(num value) =>
-    value == value.roundToDouble() ? value.toInt().toString() : '$value';

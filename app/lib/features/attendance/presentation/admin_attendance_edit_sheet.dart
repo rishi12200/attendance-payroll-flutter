@@ -6,6 +6,7 @@ import '../data/attendance_views_providers.dart';
 import '../domain/attendance_edit_validation.dart';
 import '../domain/attendance_helpers.dart';
 import '../domain/attendance_views.dart';
+import '../../leave/domain/leave_type.dart' show sessionLabel;
 
 Future<void> showAdminAttendanceEditSheet({
   required BuildContext context,
@@ -95,6 +96,13 @@ class _AdminAttendanceEditSheetState
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
+              if (widget.day.halfLeave != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'This day has a half-day leave (${sessionLabel(widget.day.halfLeave!.session).toLowerCase()}, ${widget.day.halfLeave!.leaveTypeName ?? widget.day.leaveTypeName ?? 'Leave'}). Editing the status keeps the leave marker.',
+                  ),
+                ),
               DropdownButtonFormField<String>(
                 key: const ValueKey('attendance-edit-status'),
                 initialValue: _status,

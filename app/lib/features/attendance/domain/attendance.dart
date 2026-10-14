@@ -1,6 +1,6 @@
 class AttendanceDay {
   const AttendanceDay({
-    required this.status,
+    this.status,
     this.inTime,
     this.outTime,
     this.inBranchId,
@@ -9,9 +9,10 @@ class AttendanceDay {
     this.outDistance,
     this.workedMinutes,
     this.source,
+    this.halfLeave,
   });
 
-  final String status;
+  final String? status;
   final String? inTime;
   final String? outTime;
   final String? inBranchId;
@@ -20,14 +21,17 @@ class AttendanceDay {
   final double? outDistance;
   final int? workedMinutes;
   final String? source;
+  final HalfLeave? halfLeave;
 
   factory AttendanceDay.fromJson(Map<String, dynamic> json) {
     final status = json['status'];
-    if (status is! String) {
-      throw const FormatException('The server returned an invalid attendance day.');
+    if (status != null && status is! String) {
+      throw const FormatException(
+        'The server returned an invalid attendance day.',
+      );
     }
     return AttendanceDay(
-      status: status,
+      status: status as String?,
       inTime: _optionalString(json['inTime']),
       outTime: _optionalString(json['outTime']),
       inBranchId: _optionalString(json['inBranchId']),
@@ -36,8 +40,41 @@ class AttendanceDay {
       outDistance: _optionalDouble(json['outDistance']),
       workedMinutes: _optionalInt(json['workedMinutes']),
       source: _optionalString(json['source']),
+      halfLeave: json['halfLeave'] is Map
+          ? HalfLeave.fromJson(_asJsonMap(json['halfLeave']))
+          : null,
     );
   }
+}
+
+class HalfLeave {
+  const HalfLeave({
+    required this.session,
+    required this.paid,
+    required this.leaveTypeId,
+    required this.leaveRequestId,
+    this.leaveTypeName,
+  });
+
+  final String session;
+  final bool paid;
+  final String leaveTypeId;
+  final String leaveRequestId;
+  final String? leaveTypeName;
+
+  factory HalfLeave.fromJson(Map<String, dynamic> json) => HalfLeave(
+    session: json['session'] is String ? json['session'] as String : 'full',
+    paid: json['paid'] is bool ? json['paid'] as bool : true,
+    leaveTypeId: json['leaveTypeId'] is String
+        ? json['leaveTypeId'] as String
+        : '',
+    leaveTypeName: json['leaveTypeName'] is String
+        ? json['leaveTypeName'] as String
+        : null,
+    leaveRequestId: json['leaveRequestId'] is String
+        ? json['leaveRequestId'] as String
+        : '',
+  );
 }
 
 class MonthAttendance {
@@ -62,12 +99,16 @@ class MonthAttendance {
         today is! String ||
         serverTime is! String ||
         rawDays is! Map) {
-      throw const FormatException('The server returned invalid monthly attendance.');
+      throw const FormatException(
+        'The server returned invalid monthly attendance.',
+      );
     }
     final days = <String, AttendanceDay>{};
     for (final entry in rawDays.entries) {
       if (entry.key is! String || entry.value is! Map) {
-        throw const FormatException('The server returned an invalid attendance day.');
+        throw const FormatException(
+          'The server returned an invalid attendance day.',
+        );
       }
       days[entry.key as String] = AttendanceDay.fromJson(
         _asJsonMap(entry.value),
@@ -110,7 +151,9 @@ class CheckInResult {
         inTime is! String ||
         branchId is! String ||
         distance is! num) {
-      throw const FormatException('The server returned an invalid check-in response.');
+      throw const FormatException(
+        'The server returned an invalid check-in response.',
+      );
     }
     return CheckInResult(
       date: date,
@@ -151,7 +194,9 @@ class CheckOutResult {
         inTime is! String ||
         outTime is! String ||
         workedMinutes is! int) {
-      throw const FormatException('The server returned an invalid check-out response.');
+      throw const FormatException(
+        'The server returned an invalid check-out response.',
+      );
     }
     return CheckOutResult(
       date: date,
@@ -168,19 +213,25 @@ class CheckOutResult {
 String? _optionalString(Object? value) {
   if (value == null) return null;
   if (value is String) return value;
-  throw const FormatException('The server returned an invalid attendance value.');
+  throw const FormatException(
+    'The server returned an invalid attendance value.',
+  );
 }
 
 double? _optionalDouble(Object? value) {
   if (value == null) return null;
   if (value is num && value.isFinite) return value.toDouble();
-  throw const FormatException('The server returned an invalid attendance value.');
+  throw const FormatException(
+    'The server returned an invalid attendance value.',
+  );
 }
 
 int? _optionalInt(Object? value) {
   if (value == null) return null;
   if (value is int) return value;
-  throw const FormatException('The server returned an invalid attendance value.');
+  throw const FormatException(
+    'The server returned an invalid attendance value.',
+  );
 }
 
 Map<String, dynamic> _asJsonMap(Object? value) {

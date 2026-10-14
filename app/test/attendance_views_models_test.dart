@@ -137,6 +137,17 @@ void main() {
       'enforceCheckoutLocation': false,
     });
     expect(settings.weeklyOffDays, [0, 6]);
+    expect(settings.leaveYearStartMonth, 1);
+    final aprilSettings = AttendanceSettings.fromJson({
+      'companyName': '',
+      'weeklyOffDays': [0],
+      'perDayBasis': 'calendar',
+      'maxAccuracyMeters': 100,
+      'rejectMockLocation': true,
+      'enforceCheckoutLocation': false,
+      'leaveYearStartMonth': 4,
+    });
+    expect(aprilSettings.leaveYearStartMonth, 4);
 
     final flagged = FlaggedCheckin.fromJson({
       'id': 'attempt-1',
