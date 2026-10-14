@@ -491,6 +491,7 @@ Backend:
 Flutter:
 - [x] Apply screen: type picker with remaining balance, session choice, quota error message
 - [x] Leave tab: Balance section (data cards per type)
+- [x] Balance donut chart (remaining days only, employee only)
 - [x] Admin Settings: Leave types screen. Decision sheet shows the type, session and balance, without a paid or unpaid choice.
 - [x] Calendars show half-day leave with session and type
 - [x] Admin employee details include an employee-only Leave section with balance, request history/decisions, calendar link and branch holidays
