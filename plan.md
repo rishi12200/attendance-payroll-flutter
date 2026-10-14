@@ -144,9 +144,9 @@ The raw trail: `empId`, `type` (`in` | `out`), `serverTime`, `date`, `lat`, `lng
 Rejected attempts are saved too (best effort, outside the transaction) so the admin can review them later.
 
 ### `leave_types/{id}` (Step 6.6)
-`name`, `code` (short, e.g. `CL`), `paid` (boolean), `annualQuotaDays` (number, or null for unlimited), `allowHalfDay` (boolean), `status` (`active` | `inactive`), `system` (boolean), `sortOrder`, `createdAt`, `updatedAt`
+`name`, `code` (short, e.g. `CL`), `paid` (boolean), `annualQuotaDays` (number, or null for unlimited), `allowHalfDay` (boolean), `status` (`active` | `inactive`), `system` (boolean), `sortOrder`, `createdAt`, `updatedAt`, `editedBy`
 
-Seeded by a script (admin edits the values afterwards; the numbers below are sample values only):
+Seeded by `npm run seed:leave-types` using fixed IDs `annual`, `casual`, `sick`, `floating`, `unpaid`, and `legacy-paid` (admin edits the values afterwards; the numbers below are sample values only):
 - Annual Leave (`AL`, paid, 18 days, half days allowed)
 - Casual Leave (`CL`, paid, 8 days, half days allowed)
 - Sick Leave (`SL`, paid, 8 days, half days allowed)
@@ -159,7 +159,7 @@ Rules: types in use are deactivated, never deleted. Changing a type's `paid` fla
 ### `leave_requests/{id}`
 `empId`, `fromDate`, `toDate`, `reason`, `status` (`pending` | `approved` | `rejected` | `cancelled`), `decidedBy`, `decidedAt`, `decisionNote`, `writtenDates[]`, `skippedDates[]` (`{ date, reason }`), `createdAt`, `updatedAt`
 
-Added in Step 6.6: `leaveTypeId`, `leaveTypeName` and `paid` (snapshots taken at apply time), `session` (`full` | `first_half` | `second_half`, default `full`), `requestedDays` (decimal, working days the request covers), `writtenDays` (decimal, set on approval).
+Added in Step 6.6: `leaveTypeId`, `leaveTypeName` and `paid` (snapshots taken at apply time), `session` (`full` | `first_half` | `second_half`, default `full`), `requestedDates[]` (working dates in the request), `requestedDays` (decimal, working days the request covers), `writtenDays` (decimal, set on approval).
 
 Requests approved before Step 6.6 have `leaveType: "paid" | "unpaid"` and no `leaveTypeId`. They are read as the legacy Paid Leave type or the Unpaid Leave type.
 
@@ -480,13 +480,13 @@ Flutter:
 
 ### Step 6.6: Leave types, balances and half-day leave
 Backend:
-- [ ] `leave_types` collection, `seed-leave-types` script, CRUD endpoints, system type rules
-- [ ] Leave requests carry type, session and `requestedDays`. Apply validates type, half-day rules and quota.
-- [ ] Decision no longer takes `leaveType`. Approval re-checks quota in the transaction, writes `L` or `UL` from the type, or the `halfLeave` marker for half-day requests. `writtenDays` stored.
-- [ ] `GET /leaves/balance` (decimals, by leave year, `leaveYearStartMonth` setting)
-- [ ] Calendar, by-date list and summary understand `halfLeave` (status `HL`, decimals, other-half rule). Sum check still equals days in the month.
-- [ ] Legacy approved requests (`leaveType: paid | unpaid`) still display and count correctly
-- [ ] Domain tests for every row of the half-day table, quota edges, leave-year boundaries, a request spanning two leave years
+- [x] `leave_types` collection, `seed-leave-types` script, CRUD endpoints, system type rules
+- [x] Leave requests carry type, session and `requestedDays`. Apply validates type, half-day rules and quota.
+- [x] Decision no longer takes `leaveType`. Approval re-checks quota in the transaction, writes `L` or `UL` from the type, or the `halfLeave` marker for half-day requests. `writtenDays` stored.
+- [x] `GET /leaves/balance` (decimals, by leave year, `leaveYearStartMonth` setting)
+- [x] Calendar, by-date list and summary understand `halfLeave` (status `HL`, decimals, other-half rule). Sum check still equals days in the month.
+- [x] Legacy approved requests (`leaveType: paid | unpaid`) still display and count correctly
+- [x] Domain tests for every row of the half-day table, quota edges, leave-year boundaries, a request spanning two leave years
 
 Flutter:
 - [ ] Apply screen: type picker with remaining balance, session choice, quota error message

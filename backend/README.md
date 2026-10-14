@@ -428,99 +428,89 @@ $env:WEB_API_KEY = "<firebase-web-api-key>"
 npm --silent run dev:login -- --email admin@example.com --password "<temporary-password>"
 ```
 
-## Leave API (Step 6 backend)
+## Leave API (Steps 6 and 6.6)
 
-Leave request dates are inclusive `YYYY-MM-DD` IST calendar dates. A request
-may cover at most 31 days. Employees must be active, and the requested range
-must fall within their `doj` and inclusive `dol`. A request is rejected if any
-month it touches is locked or if it overlaps another pending or approved
-request for that employee. Rejected and cancelled requests do not block a new
-request. Lists read at most 200 request documents and filter/sort those results
-in memory.
+Leave dates are inclusive `YYYY-MM-DD` IST calendar dates. Requests are limited
+to 31 dates and must fall within the active employee's `doj` and inclusive
+`dol`. They must not touch a locked payroll month or overlap another pending or
+approved request. Weekly offs and applicable branch holidays are excluded from
+the requested-day calculation. Rejected and cancelled requests do not reserve
+quota. Leave request lists read at most 200 documents; balance calculations
+read at most 500 requests for the selected employee.
 
-- `POST /leaves` â€” employee only. Body: `{ "fromDate": "2026-10-12",
-  "toDate": "2026-10-13", "reason": "Family event" }`. Reason is trimmed,
-  required, and limited to 200 characters. Returns `201` with a pending request.
-- `GET /leaves/me?status=pending|approved|rejected|cancelled|all` â€” employee
-  only; status is optional. Returns the caller's requests newest first.
-- `POST /leaves/:id/cancel` â€” employee only; only the request owner may cancel
-  a pending request. Returns the updated request.
-- `GET /leaves?status=pending|approved|rejected|cancelled|all&empId=<uid>` â€”
-  admin only; status defaults to `pending`. Returns up to 200 matching requests
-  newest first with `name`, `empCode`, and `designation` from the employee
-  profile.
-- `GET /leaves/:id` â€” admin or the request owner. A request owned by someone
-  else returns 404 to avoid exposing whether its ID exists.
-- `POST /leaves/:id/decision` â€” admin only. Approve with
-  `{ "decision": "approved", "leaveType": "paid", "note": "Approved" }`,
-  or reject with `{ "decision": "rejected", "note": "Please reapply" }`.
-  `leaveType` is required for approval and is not accepted for rejection.
+### Leave types
 
-Approval runs in one Firestore transaction. It checks the request, employee,
-company weekly offs, holidays, attendance months, and payroll locks before any
-writes. For each date the classification order is: outside the employee's
-joining window, existing `P` or `H` punch/presence, holiday, weekly off, then
-write the leave status. Weekly offs and holidays are never written. Existing
-`A`, `L`, and `UL` entries may be overwritten. Punch days are returned as
-`has_punch` in `skippedDates`; other skip reasons are `outside_employment`,
-`holiday`, and `weekly_off`.
+Run `npm run seed:leave-types` after configuring Firebase credentials. It
+creates missing fixed IDs `annual`, `casual`, `sick`, `floating`, `unpaid`, and
+`legacy-paid` and never overwrites edits. The sample annual quotas are 18 AL,
+8 CL, 8 SL, 2 FH, and unlimited UL. `legacy-paid` is inactive and exists only
+for old approved requests. Adjust quotas to company policy.
 
-For each date written, the corresponding attendance day becomes `L` for paid
-leave or `UL` for unpaid leave, with `source: "leave"`, `leaveRequestId`, and
-admin edit fields. Existing attendance month documents are updated only at
-those day paths; missing month documents are created. The request stores
-`writtenDates`, `skippedDates`, `leaveType`, and decision metadata, and an audit
-log is written in the same transaction. A request whose dates are all skipped
-is still approved and includes `"noDaysWritten": true` in its response.
+- `GET /leave-types` lists active types for employees; admins may filter with
+  `?status=active|inactive|all` (default `all`).
+- `POST /leave-types` (admin) creates a type. Required fields: `name`, `code`,
+  `paid`, `annualQuotaDays` (number or `null`), and `allowHalfDay`; `sortOrder`
+  is optional.
+- `PATCH /leave-types/:id` (admin) updates supplied fields.
+- `POST /leave-types/:id/deactivate` and `/reactivate` (admin) change status.
 
-Example `POST /leaves` response:
+Names and codes are unique case-insensitively (409). Types in use are
+deactivated rather than deleted. The `unpaid` system type cannot be deactivated
+or have its paid/quota fields changed; `legacy-paid` cannot be activated or
+have those fields changed. Types with pending requests cannot be deactivated.
+Type changes record `editedBy` and write an audit row atomically with the type.
 
-```json
-{
-  "id": "leave-request-id",
-  "empId": "employee-uid",
-  "fromDate": "2026-10-12",
-  "toDate": "2026-10-13",
-  "reason": "Family event",
-  "status": "pending",
-  "createdAt": "2026-10-08T10:00:00.000Z",
-  "updatedAt": "2026-10-08T10:00:00.000Z"
-}
-```
+### Leave requests and balances
 
-Example approval response with a weekly off skipped:
+- `POST /leaves` (employee) body:
+  `{ "leaveTypeId": "sick", "fromDate": "2026-10-12", "toDate": "2026-10-12", "reason": "Family event", "session": "full" }`.
+  `session` is optional and is `full`, `first_half`, or `second_half`.
+- `GET /leaves/me?status=pending|approved|rejected|cancelled|all` lists the
+  caller's requests newest first.
+- `POST /leaves/:id/cancel` lets the owner cancel a pending request.
+- `GET /leaves?status=pending|approved|rejected|cancelled|all&empId=<uid>`
+  (admin) lists up to 200 requests and adds `name`, `empCode`, and `designation`.
+- `GET /leaves/:id` is available to admins and the request owner.
+- `POST /leaves/:id/decision` (admin) accepts
+  `{ "decision": "approved", "note": "Approved" }` or
+  `{ "decision": "rejected", "note": "Please reapply" }`. A submitted
+  `leaveType` field returns 400; the request's type controls approval.
+- Every leave response uses the same request fields: `id`, `empId`, `fromDate`,
+  `toDate`, `reason`, `status`, `createdAt`, and `updatedAt`, plus type/session
+  data when present, decision metadata when decided, and `writtenDates`/
+  `skippedDates` after approval. Admin list rows also include `name`, `empCode`,
+  and `designation`.
+- `GET /leaves/balance?year=2026&empId=<uid>` returns balances by leave year.
+  Employees can omit both parameters and read only their own balance; admins
+  must provide `empId`. `year` defaults to the current year as defined by
+  `company_settings.leaveYearStartMonth` (1-12, default 1). Each type returns
+  decimal `quota`, `used`, `pending`, and `remaining` values; unlimited quota
+  and remaining are `null`.
 
-```json
-{
-  "id": "leave-request-id",
-  "empId": "employee-uid",
-  "fromDate": "2026-10-11",
-  "toDate": "2026-10-12",
-  "reason": "Family event",
-  "status": "approved",
-  "leaveType": "paid",
-  "writtenDates": ["2026-10-12"],
-  "skippedDates": [{ "date": "2026-10-11", "reason": "weekly_off" }],
-  "decidedBy": "admin-uid",
-  "decidedAt": "2026-10-08T10:00:00.000Z",
-  "decisionNote": "Approved"
-}
-```
+Apply requires at least one working date after employment bounds, holidays and
+weekly offs are excluded. Half-day leave must cover one date and the type must
+allow half days. Requests crossing leave-year boundaries are split for quota
+checks. Pending requests reserve quota; both apply and approval recheck quotas
+inside a Firestore transaction. Approved full days write `L` or `UL` and leave
+metadata. Half days write `halfLeave` alongside any existing attendance punch
+or status, preserving the other half. Calendar entries use `HL`, include
+session and leave type, and identify the other half as `present`, `absent`, or
+`pending`. Calendar summaries calculate paid/unpaid leave and LOP as decimal
+days; the monthly total remains one per calendar date. Admin by-date totals
+include `HL`. Leave type names are included on calendars, summaries, and
+admin by-date rows.
 
-Leave business errors use the standard error body. Important codes are
-`INVALID_DATE_RANGE` (400), `LEAVE_RANGE_TOO_LONG` (422),
-`OUTSIDE_EMPLOYMENT_WINDOW` (422), `MONTH_LOCKED` (409),
-`LEAVE_OVERLAP` (409, `details.requestId` identifies the conflicting request),
-`LEAVE_NOT_FOUND` (404), `NOT_PENDING` (409), and `ALREADY_DECIDED` (409).
-Authentication failures are 401; wrong-role or inactive-employee requests are
-403. Unknown JSON fields and missing approval leave types return 400
-`VALIDATION_ERROR`.
+Check-in on a day whose stored status is `L` or `UL` returns 422 `ON_LEAVE`
+without writing attendance or a check-in record. Check-out remains available
+under its existing rules.
 
-The calendar and summary endpoints read the resulting `L` and `UL` attendance
-statuses. `leaveRequestId` is included in the calendar day when stored. A
-check-in on a day marked `L` or `UL` returns 422 `ON_LEAVE` without changing
-attendance or creating a check-in record. Check-out behavior is unchanged.
-
+Legacy approved requests containing `leaveType: "paid" | "unpaid"` without a
+type ID still display and count against the corresponding legacy balance.
+Pending legacy requests cannot be approved without a type ID; they can be
+rejected or cancelled. Important business errors include `QUOTA_EXCEEDED`
+(422), `NOT_A_WORKING_DAY` (422), `HALF_DAY_SINGLE_DATE` (422),
+`HALF_DAY_NOT_ALLOWED` (422), `NO_WORKING_DAYS` (422), `LEAVE_OVERLAP` (409),
+`MONTH_LOCKED` (409), and `LEAVE_TYPE_INACTIVE` (422).
 ## Branch-wise holidays (Step 6.5)
 
 - `GET /holidays?year=2026` is available to admins and employees. Admins can
