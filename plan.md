@@ -4,7 +4,7 @@ Mobile app (Flutter) with an Express API on Cloud Run and Firebase (Auth, Firest
 
 The goal of the POC is one thin end-to-end slice that works: login, geofenced check-in, attendance views, leave with types and balances, and payroll with an on-demand payslip. Everything else is deferred.
 
-**Status:** Steps 0 to 5 are done and verified. Step 6 (leave) is built, with live verification of the Flutter screens still pending. Step 6.5 (branch-wise holidays) is built and being verified. Two small rule fixes found during testing are scheduled as **Step 6.5b** (one holiday per branch per date, and no check-in on a full-day leave). Leave types, balances and half-day leave are **Step 6.6**. All of these come **before payroll**, because they change the numbers payroll reads. Regularization, charts and other additive features come after the plan is complete (see section 12, "After the plan").
+**Status:** Steps 0 to 5 are done and verified. Step 6 (leave) is built, with live verification of the Flutter screens still pending. Step 6.5 (branch-wise holidays) is built and being verified. Two small rule fixes found during testing are scheduled as **Step 6.5b** (one holiday per branch per date, and no check-in on a full-day leave). Leave types, balances and half-day leave are **Step 6.6**. All of these come **before payroll**, because they change the numbers payroll reads. Regularization, additional balance visualizations and other additive features come after the plan is complete (see section 12, "After the plan"). The employee remaining-days pie chart is Step 6.6c.
 
 ---
 
@@ -19,7 +19,7 @@ The goal of the POC is one thin end-to-end slice that works: login, geofenced ch
 - **Holidays by branch:** a holiday applies to all branches or to chosen branches, and a branch has at most one holiday on a given date. Employees see their own holiday list.
 - **Leave types:** admin-managed types (Casual, Sick, Annual, Floating Holiday, Unpaid, and so on), each with a paid flag, a yearly quota, and whether half days are allowed
 - **Leave:** employees apply with a type, optionally for a first or second half of one day. Admin approves or rejects. An employee on an approved **full-day** leave cannot check in that day.
-- **Leave balances** per type (quota, used, pending, remaining), shown as plain data. Charts come later.
+- **Leave balances** per type (quota, used, pending, remaining), with an employee remaining-days pie chart (Step 6.6c).
 - Payroll: monthly preview, admin adjustments (bonus, other deductions), month lock and unlock
 - Payslip generated on demand, never saved
 
@@ -31,7 +31,7 @@ The goal of the POC is one thin end-to-end slice that works: login, geofenced ch
 
 ### Deferred (after the plan is complete)
 - Attendance regularization with admin-managed types (business trip, WFH, training and so on)
-- Leave balance charts (donut or bar) in the employee Leave tab
+- Additional leave balance visualizations beyond the employee remaining-days pie chart in Step 6.6c
 - Leave accrual, carry-forward, manual balance adjustments by the admin
 - Leave type eligibility (for example paternity or adoption leave only for some employees) and prorating quotas for mid-year joiners. In the POC every employee sees every active type and gets the full yearly quota from the first day of the leave year.
 - Per-end sessions for multi-day leave (start in the second half, end in the first half)
@@ -496,6 +496,10 @@ Flutter:
 - [x] Admin employee details include an employee-only Leave section with balance, request history/decisions, calendar link and branch holidays
 - [ ] **Done when:** an employee applies for Sick Leave and sees the balance drop, a half-day request shows 0.5 on the balance and in the calendar, an over-quota request is blocked, paid types add no LOP and unpaid types do, and an admin can add a new leave type that employees immediately see
 
+### Step 6.6c: Remaining leave balance pie chart
+- [x] Flutter: show remaining positive leave days in a pie chart at the top of the employee Balance section, with a responsive legend and excluded unlimited/zero-day types noted
+- [ ] **Done when:** live verification confirms the chart follows the selected leave year, updates after refresh, and remains readable with large text and dark theme
+
 ### Step 7: Payroll
 - [ ] Pure payroll function with unit tests, ported from `docs/prototype.html`. It must accept decimal `lop`.
 - [ ] Preview, adjustments, finalize and unlock
@@ -510,7 +514,6 @@ Flutter:
 
 ### After the plan (backlog)
 - [ ] Attendance regularization: employee requests a correction for a past day with an admin-managed type (business trip, WFH, training and so on). Approval sets the day to Present and stores the type. Admin manages the type list in Settings. Needs no payroll change.
-- [ ] Leave balance charts (donut or bar) in the employee Leave tab, on top of `GET /leaves/balance`
 - [ ] Monthly accrual, carry-forward and manual balance adjustments by the admin
 - [ ] Leave type eligibility rules (for example paternity or adoption leave only for some employees) and quota proration for mid-year joiners
 - [ ] Per-end sessions for multi-day leave
@@ -549,7 +552,7 @@ Flutter:
 | 20 | Which branch decides an employee's holidays? | Primary branch. With none, only all-branch holidays |
 | 21 | Overridden leave days | A leave day later overridden by an admin edit is not refunded (POC limitation). A check-in can no longer override a full-day leave (decision 24) |
 | 22 | Attendance regularization | After the plan is complete (does not affect payroll) |
-| 23 | Leave balance charts | After the plan is complete. Balances are data only until then |
+| 23 | Leave balance charts | Step 6.6c adds one employee remaining-days pie chart; additional balance charts remain deferred |
 | 24 | Check-in on a full-day leave (paid or unpaid) | Rejected with `ON_LEAVE`. The admin can mark the day Present with the attendance edit. Half-day leave still allows check-in |
 | 25 | Holiday overlap | One holiday per branch per date. A Chennai-only and a Coimbatore-only holiday may share a date |
 | 26 | Which leave types does an employee see? | Every active type. The admin switches off the ones the company does not use. Eligibility rules are in the backlog |
