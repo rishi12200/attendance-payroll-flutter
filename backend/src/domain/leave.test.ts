@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   classifyLeaveDates,
+  classifyHalfLeaveDate,
   expandDateRange,
   monthsTouched,
   rangesOverlap,
@@ -104,4 +105,58 @@ test('classifies a holiday before a weekly off and supports custom weekdays', ()
       ],
     },
   );
+});
+
+test('full-day classification skips a half-leave marker after punch statuses', () => {
+  const result = classifyLeaveDates({
+    dates: ['2026-10-05', '2026-10-06'],
+    holidays: new Set(),
+    weeklyOffDays: [],
+    days: {
+      '2026-10-05': { status: 'A', halfLeave: { session: 'first_half' } },
+      '2026-10-06': { status: 'P', halfLeave: { session: 'first_half' } },
+    },
+  });
+  assert.deepEqual(result, {
+    toWrite: [],
+    skipped: [
+      { date: '2026-10-05', reason: 'already_on_leave' },
+      { date: '2026-10-06', reason: 'has_punch' },
+    ],
+  });
+});
+
+test('half-day classification reports each skip reason in precedence order', () => {
+  const base = {
+    weeklyOffDays: [0],
+    holidayMap: new Set(['2026-10-04', '2026-10-05']),
+  };
+  assert.deepEqual(classifyHalfLeaveDate({
+    ...base, date: '2026-10-03', doj: '2026-10-04', day: { status: 'L' },
+  }), { write: false, reason: 'outside_employment' });
+  assert.deepEqual(classifyHalfLeaveDate({ ...base, date: '2026-10-04' }), {
+    write: false, reason: 'holiday',
+  });
+  assert.deepEqual(classifyHalfLeaveDate({ ...base, date: '2026-10-11' }), {
+    write: false, reason: 'weekly_off',
+  });
+  assert.deepEqual(classifyHalfLeaveDate({ ...base, date: '2026-10-05', day: { status: 'L' } }), {
+    write: false, reason: 'holiday',
+  });
+  assert.deepEqual(classifyHalfLeaveDate({
+    ...base, date: '2026-10-06', day: { status: 'UL' },
+  }), { write: false, reason: 'already_on_leave' });
+  assert.deepEqual(classifyHalfLeaveDate({
+    ...base, date: '2026-10-06', day: { halfLeave: { paid: true } },
+  }), { write: false, reason: 'already_on_leave' });
+  assert.deepEqual(classifyHalfLeaveDate({
+    ...base, date: '2026-10-06', day: { status: 'H' },
+  }), { write: false, reason: 'half_day_marked' });
+  assert.deepEqual(classifyHalfLeaveDate({
+    ...base, date: '2026-10-06', day: { status: 'P' },
+  }), { write: true });
+  assert.deepEqual(classifyHalfLeaveDate({
+    ...base, date: '2026-10-06', day: { status: 'A' },
+  }), { write: true });
+  assert.deepEqual(classifyHalfLeaveDate({ ...base, date: '2026-10-06' }), { write: true });
 });

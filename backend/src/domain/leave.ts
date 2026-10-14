@@ -11,7 +11,19 @@ export type LeaveSkipReason =
   | 'weekly_off'
   | 'holiday'
   | 'has_punch'
+  | 'already_on_leave'
   | 'outside_employment';
+
+export type HalfLeaveSkipReason =
+  | 'outside_employment'
+  | 'holiday'
+  | 'weekly_off'
+  | 'already_on_leave'
+  | 'half_day_marked';
+
+export type HalfLeaveClassification =
+  | { write: true }
+  | { write: false; reason: HalfLeaveSkipReason };
 
 export interface LeaveClassification {
   toWrite: string[];
@@ -75,7 +87,7 @@ export function classifyLeaveDates(input: {
   dol?: string | null;
   holidays: ReadonlySet<string>;
   weeklyOffDays: readonly number[];
-  days: Record<string, { status?: unknown } | undefined>;
+  days: Record<string, { status?: unknown; halfLeave?: unknown } | undefined>;
 }): LeaveClassification {
   const weeklyOffDays = new Set(input.weeklyOffDays);
   const toWrite: string[] = [];
@@ -90,6 +102,8 @@ export function classifyLeaveDates(input: {
       reason = 'outside_employment';
     } else if (input.days[date]?.status === 'P' || input.days[date]?.status === 'H') {
       reason = 'has_punch';
+    } else if (input.days[date]?.halfLeave != null) {
+      reason = 'already_on_leave';
     } else if (input.holidays.has(date)) {
       reason = 'holiday';
     } else {
@@ -101,4 +115,41 @@ export function classifyLeaveDates(input: {
     else skipped.push({ date, reason });
   }
   return { toWrite, skipped };
+}
+
+export function classifyHalfLeaveDate(input: {
+  date: string;
+  doj?: string | null;
+  dol?: string | null;
+  holidayMap: ReadonlySet<string> | Readonly<Record<string, unknown>>;
+  weeklyOffDays: readonly number[];
+  day?: { status?: unknown; halfLeave?: unknown };
+}): HalfLeaveClassification {
+  const { date } = input;
+  if (!isValidDateString(date)) {
+    throw new RangeError('Leave classification requires a valid YYYY-MM-DD date.');
+  }
+  if (input.doj != null && !isValidDateString(input.doj)) {
+    throw new RangeError('Date of joining must be a valid YYYY-MM-DD date.');
+  }
+  if (input.dol != null && !isValidDateString(input.dol)) {
+    throw new RangeError('Date of leaving must be a valid YYYY-MM-DD date.');
+  }
+  let reason: HalfLeaveSkipReason | undefined;
+  if ((input.doj != null && date < input.doj) || (input.dol != null && date > input.dol)) {
+    reason = 'outside_employment';
+  } else if (input.holidayMap instanceof Set
+      ? input.holidayMap.has(date)
+      : Object.hasOwn(input.holidayMap, date)) {
+    reason = 'holiday';
+  } else if (input.weeklyOffDays.includes(new Date(`${date}T00:00:00.000Z`).getUTCDay())) {
+    reason = 'weekly_off';
+  } else if (input.day?.status === 'L' || input.day?.status === 'UL' || input.day?.halfLeave != null) {
+    reason = 'already_on_leave';
+  } else if (input.day?.status === 'H') {
+    reason = 'half_day_marked';
+  } else {
+    reason = undefined;
+  }
+  return reason === undefined ? { write: true } : { write: false, reason };
 }
