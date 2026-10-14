@@ -7,7 +7,9 @@ import '../data/leave_providers.dart';
 import '../domain/leave_helpers.dart';
 import '../domain/leave_request.dart';
 import '../domain/leave_type.dart';
+import '../domain/remaining_leave_slices.dart';
 import 'employee_holidays_section.dart';
+import 'remaining_leave_chart.dart';
 
 const _filters = <String, String>{
   'All': 'all',
@@ -343,6 +345,7 @@ class _BalancePaneState extends ConsumerState<_BalancePane> {
   Future<void> _refresh() async {
     final key = (year: _year, empId: null);
     ref.invalidate(leaveBalanceProvider(key));
+    ref.invalidate(leaveTypesProvider('active'));
     await ref.read(leaveBalanceProvider(key).future);
   }
 
@@ -350,6 +353,7 @@ class _BalancePaneState extends ConsumerState<_BalancePane> {
   Widget build(BuildContext context) {
     final key = (year: _year, empId: null);
     final balance = ref.watch(leaveBalanceProvider(key));
+    final activeTypes = ref.watch(leaveTypesProvider('active'));
     return balance.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => ListView(
@@ -371,6 +375,13 @@ class _BalancePaneState extends ConsumerState<_BalancePane> {
         ],
       ),
       data: (value) {
+        final activeTypeIds = activeTypes.asData?.value
+            .map((type) => type.id)
+            .toSet();
+        final chartData = buildRemainingSlices(
+          balanceTypes: value.types,
+          activeTypeIds: activeTypeIds,
+        );
         _anchorYear ??= value.year;
         _year ??= value.year;
         return RefreshIndicator(
@@ -407,6 +418,7 @@ class _BalancePaneState extends ConsumerState<_BalancePane> {
                 padding: EdgeInsets.symmetric(vertical: 8),
                 child: Text('Pending requests are reserved from your balance.'),
               ),
+              RemainingLeaveChartCard(balance: value, sliceData: chartData),
               if (value.types.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 48),
