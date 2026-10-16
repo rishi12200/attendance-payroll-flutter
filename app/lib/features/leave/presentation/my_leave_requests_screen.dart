@@ -101,8 +101,8 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: SegmentedButton<int>(
               segments: const [
-                ButtonSegment(value: 0, label: Text('Requests')),
-                ButtonSegment(value: 1, label: Text('Balance')),
+                ButtonSegment(value: 0, label: Text('Balance')),
+                ButtonSegment(value: 1, label: Text('Requests')),
                 ButtonSegment(value: 2, label: Text('Holidays')),
               ],
               selected: {_section},
@@ -111,9 +111,9 @@ class _MyLeaveRequestsScreenState extends ConsumerState<MyLeaveRequestsScreen> {
             ),
           ),
           if (_section == 0)
-            Expanded(child: _requestsPane())
-          else if (_section == 1)
             const Expanded(child: _BalancePane())
+          else if (_section == 1)
+            Expanded(child: _requestsPane())
           else
             const Expanded(child: EmployeeHolidaysSection()),
         ],

@@ -111,15 +111,15 @@ class RemainingLeaveDonut extends StatelessWidget {
                       ),
                     ),
                 ],
-                if (calculation.hasUnlimitedTypes)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Types with no limit are not shown in this chart.',
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: scheme.onSurfaceVariant),
-                    ),
-                  ),
+                // if (calculation.hasUnlimitedTypes)
+                //   Padding(
+                //     padding: const EdgeInsets.only(top: 8),
+                //     child: Text(
+                //       'Types with no limit are not shown in this chart.',
+                //       style: Theme.of(context).textTheme.bodySmall
+                //           ?.copyWith(color: scheme.onSurfaceVariant),
+                //     ),
+                //   ),
               ],
             );
           },
